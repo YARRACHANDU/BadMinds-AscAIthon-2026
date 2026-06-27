@@ -1,252 +1,290 @@
 /**
- * ============================================================
- * SentinelAI — Environment State Manager Service
- * ============================================================
- * Responsibility: Maintain the latest known state of every
- * monitored room. This service has NO AI reasoning logic —
- * it purely tracks, compares, and updates environment data.
- *
- * Storage: In-memory JavaScript Map (MongoDB-ready for v2).
- * Architecture: Service Layer (SOLID — Single Responsibility)
- * ============================================================
+ * SentinelAI 2.0 — Environment State Manager Service
+ * Responsibility: Tracks multiple rooms, executes agent reasoning loops,
+ * and maintains metrics/device configurations.
  */
 
-// ---------------------------------------------------------------------------
-// In-memory store — keyed by roomId
-// ---------------------------------------------------------------------------
+const aiAgent = require("./aiAgent.service");
+const incidentService = require("./incident.service");
+const actionEngine = require("./actionEngine.service");
+const eventTimeline = require("./eventTimeline.service");
+
+// In-memory store
 const rooms = new Map();
 
-// ---------------------------------------------------------------------------
-// Default State Template
-// Every new room is initialized with these safe default values.
-// ---------------------------------------------------------------------------
-const createDefaultState = (roomId, cameraId) => ({
-  roomId,
-  cameraId: cameraId || roomId,         // fallback cameraId = roomId
-  peopleCount: 0,
-  detectedObjects: [],                   // array of label strings
-  occupancyStatus: "Empty",             // "Occupied" | "Empty"
-  roomEmptySince: new Date().toISOString(), // set immediately on creation
-  lastActivityTime: null,               // last time someone was detected
-  currentAlert: null,                   // { type, message, severity, timestamp }
-  lastUpdated: new Date().toISOString(),
-  confidence: 0,                        // average confidence of last detections
-  frameCount: 0,                        // total frames processed for this room
+// Helper to determine risk level
+const calcRiskLevel = (agents) => {
+  if (agents.security.decision === "INTRUSION_ALERT" || agents.security.decision === "UNAUTHORIZED_ACCESS_RISK") {
+    return "CRITICAL";
+  }
+  if (agents.safety.decision === "SAFETY_HAZARD_DETECTED") {
+    return "HIGH";
+  }
+  if (agents.energy.decision === "ENERGY_WASTAGE_DETECTED") {
+    return "MEDIUM";
+  }
+  return "LOW";
+};
+
+// Initial Room setup templates
+const DEFAULT_ROOMS = [
+  { id: "ROOM_A", name: "Main Office / Lab", camera: "CAM_A" },
+  { id: "ROOM_B", name: "Warehouse / Packing", camera: "CAM_B" },
+  { id: "ROOM_C", name: "Executive Suite", camera: "CAM_C" },
+  { id: "ROOM_D", name: "Server Room D", camera: "CAM_D" }
+];
+
+const createDefaultState = (roomId, roomName, cameraId) => {
+  const initialDeviceStates = {
+    lights: true,
+    fan: true,
+    alarm: false
+  };
+
+  const tempRoom = {
+    roomId,
+    roomName: roomName || roomId,
+    cameraId: cameraId || roomId,
+    peopleCount: 0,
+    detectedObjects: [],
+    occupancyStatus: "Empty",
+    roomEmptySince: new Date().toISOString(),
+    lastActivityTime: null,
+    lastUpdated: new Date().toISOString(),
+    confidence: 0.95,
+    frameCount: 0,
+    deviceStates: initialDeviceStates,
+    riskLevel: "LOW",
+    statusSummary: "Optimal"
+  };
+
+  // Run initial reasoning pass
+  tempRoom.agents = aiAgent.runAgentReasoning(tempRoom);
+  return tempRoom;
+};
+
+// Initialize the 4 rooms in memory on load
+DEFAULT_ROOMS.forEach(r => {
+  rooms.set(r.id, createDefaultState(r.id, r.name, r.camera));
 });
 
-// ---------------------------------------------------------------------------
-// HELPER — Calculate occupancyStatus from peopleCount
-// ---------------------------------------------------------------------------
-const calcOccupancyStatus = (peopleCount) =>
-  peopleCount > 0 ? "Occupied" : "Empty";
-
-// ---------------------------------------------------------------------------
-// HELPER — Calculate average confidence from an objects array
-// objects: [{ label, confidence }, ...]
-// ---------------------------------------------------------------------------
-const calcAverageConfidence = (objects) => {
-  if (!objects || objects.length === 0) return 0;
-  const total = objects.reduce((sum, obj) => sum + (obj.confidence || 0), 0);
-  return parseFloat((total / objects.length).toFixed(3));
-};
-
-// ---------------------------------------------------------------------------
-// HELPER — Extract plain label strings from Afferens objects array
-// ---------------------------------------------------------------------------
-const extractLabels = (objects) => {
-  if (!objects || !Array.isArray(objects)) return [];
-  return objects.map((obj) => obj.label || "unknown");
-};
-
-// ---------------------------------------------------------------------------
-// createRoom(roomId, cameraId)
-// Creates a new room with default state.
-// Returns: the new room state object.
-// ---------------------------------------------------------------------------
-const createRoom = async (roomId, cameraId) => {
-  if (!roomId) throw new Error("roomId is required to create a room.");
-
-  if (rooms.has(roomId)) {
-    // Room already exists — return existing state
-    return rooms.get(roomId);
-  }
-
-  const state = createDefaultState(roomId, cameraId);
-  rooms.set(roomId, state);
-
-  console.log(`[ESM] Room created: ${roomId} (camera: ${cameraId || roomId})`);
-  return state;
-};
-
-// ---------------------------------------------------------------------------
-// getRoom(roomId)
-// Returns the current state of a specific room.
-// Returns: room state object, or null if not found.
-// ---------------------------------------------------------------------------
-const getRoom = async (roomId) => {
-  if (!roomId) throw new Error("roomId is required.");
-  return rooms.get(roomId) || null;
-};
-
-// ---------------------------------------------------------------------------
-// getAllRooms()
-// Returns an array of all room state objects.
-// ---------------------------------------------------------------------------
 const getAllRooms = async () => {
   return Array.from(rooms.values());
 };
 
-// ---------------------------------------------------------------------------
-// deleteRoom(roomId)
-// Removes a room from the store.
-// Returns: true if deleted, false if not found.
-// ---------------------------------------------------------------------------
+const getRoom = async (roomId) => {
+  return rooms.get(roomId) || null;
+};
+
+const createRoom = async (roomId, cameraId) => {
+  if (rooms.has(roomId)) return rooms.get(roomId);
+  const state = createDefaultState(roomId, null, cameraId);
+  rooms.set(roomId, state);
+  return state;
+};
+
 const deleteRoom = async (roomId) => {
   if (!rooms.has(roomId)) return false;
   rooms.delete(roomId);
-  console.log(`[ESM] Room deleted: ${roomId}`);
   return true;
 };
 
-// ---------------------------------------------------------------------------
-// updateRoom(roomId, partialState)
-// Merges a partial state object into an existing room.
-// Used internally and externally for direct field overrides.
-// ---------------------------------------------------------------------------
-const updateRoom = async (roomId, partialState) => {
-  if (!roomId) throw new Error("roomId is required.");
+const updateDeviceState = async (roomId, deviceStatePatch) => {
+  const room = rooms.get(roomId);
+  if (!room) return null;
 
-  let current = rooms.get(roomId);
-  if (!current) {
-    // Auto-create room if it doesn't exist
-    current = await createRoom(roomId, partialState.cameraId);
-  }
-
-  const updated = {
-    ...current,
-    ...partialState,
-    lastUpdated: new Date().toISOString(),
+  room.deviceStates = {
+    ...room.deviceStates,
+    ...deviceStatePatch
   };
+  room.lastUpdated = new Date().toISOString();
 
-  rooms.set(roomId, updated);
-  return updated;
+  // Re-run agents evaluation
+  room.agents = aiAgent.runAgentReasoning(room);
+  room.riskLevel = calcRiskLevel(room.agents);
+
+  return room;
 };
 
-// ---------------------------------------------------------------------------
-// updateEnvironmentState(roomId, perceptionData)
-// *** MAIN ENTRY POINT ***
-//
-// Processes a new Afferens perception payload for a given room.
-// 1. Find or create the room.
-// 2. Extract people count and object list.
-// 3. Compare with previous state.
-// 4. Update only the changed fields.
-// 5. Handle roomEmptySince transitions.
-// 6. Return { previous, updated, changes } diff object.
-// ---------------------------------------------------------------------------
+/**
+ * Main update routine triggered by vision stream ingestion
+ */
 const updateEnvironmentState = async (roomId, perceptionData, cameraId) => {
-  if (!roomId) throw new Error("roomId is required.");
-  if (!perceptionData) throw new Error("perceptionData is required.");
-
-  // 1. Find or auto-create the room
-  let previous = rooms.get(roomId);
-  if (!previous) {
-    previous = await createRoom(roomId, cameraId);
+  let room = rooms.get(roomId);
+  if (!room) {
+    room = await createRoom(roomId, cameraId);
   }
 
-  // 2. Extract key fields from the Afferens perception payload
-  //    Supports both direct objects array and nested data.objects
-  const objects =
-    perceptionData.objects ||
-    perceptionData.data?.objects ||
-    [];
+  const objects = perceptionData.objects || perceptionData.data?.objects || [];
+  const newPeopleCount = objects.filter(obj => obj.label === "person").length;
+  
+  // Extract unique labels
+  const uniqueLabels = [...new Set(objects.map(obj => obj.label))];
+  
+  // Update core state
+  room.peopleCount = newPeopleCount;
+  room.detectedObjects = uniqueLabels;
+  room.frameCount += 1;
+  room.lastUpdated = new Date().toISOString();
 
-  const newPeopleCount = objects.filter(
-    (obj) => obj.label === "person"
-  ).length;
-
-  const newLabels = extractLabels(objects);
-  const newConfidence = calcAverageConfidence(objects);
-  const newOccupancy = calcOccupancyStatus(newPeopleCount);
-  const now = new Date().toISOString();
-
-  // 3. Build the updated state patch
-  const patch = {
-    peopleCount: newPeopleCount,
-    detectedObjects: newLabels,
-    occupancyStatus: newOccupancy,
-    confidence: newConfidence,
-    frameCount: (previous.frameCount || 0) + 1,
-    lastUpdated: now,
-  };
-
-  // 4. Handle occupancy transitions
-  const wasOccupied = previous.peopleCount > 0;
+  const wasOccupied = room.occupancyStatus === "Occupied";
   const isNowOccupied = newPeopleCount > 0;
+  room.occupancyStatus = isNowOccupied ? "Occupied" : "Empty";
 
   if (wasOccupied && !isNowOccupied) {
-    // Room just became empty — record the timestamp
-    patch.roomEmptySince = now;
-    console.log(`[ESM] ${roomId} → Room is now EMPTY (set roomEmptySince).`);
+    room.roomEmptySince = new Date().toISOString();
+    eventTimeline.addEvent(roomId, "info", "Zone status changed to Unoccupied.");
   } else if (!wasOccupied && isNowOccupied) {
-    // Room was empty — people detected again — clear the empty timestamp
-    patch.roomEmptySince = null;
-    patch.lastActivityTime = now;
-    console.log(`[ESM] ${roomId} → Occupancy RESTORED (cleared roomEmptySince).`);
-  } else if (isNowOccupied) {
-    // Still occupied — update last activity time
-    patch.lastActivityTime = now;
+    room.roomEmptySince = null;
+    room.lastActivityTime = new Date().toISOString();
+    eventTimeline.addEvent(roomId, "info", `Occupancy detected: ${newPeopleCount} personnel.`);
   }
 
-  // 5. Detect which fields actually changed (for change-aware consumers)
-  const changes = {};
-  const fieldsToCheck = [
-    "peopleCount",
-    "occupancyStatus",
-    "detectedObjects",
-    "confidence",
-  ];
+  // Run Multi-Agent reasoning on new visual states
+  room.agents = aiAgent.runAgentReasoning(room);
+  room.riskLevel = calcRiskLevel(room.agents);
 
-  for (const field of fieldsToCheck) {
-    const prevVal = JSON.stringify(previous[field]);
-    const nextVal = JSON.stringify(patch[field]);
-    if (prevVal !== nextVal) {
-      changes[field] = { from: previous[field], to: patch[field] };
-    }
-  }
+  // Compute average confidence
+  const totalConf = Object.values(room.agents).reduce((sum, ag) => sum + ag.confidence, 0);
+  room.confidence = parseFloat((totalConf / 4).toFixed(3));
 
-  // 6. Persist the updated state
-  const updated = {
-    ...previous,
-    ...patch,
-  };
-  rooms.set(roomId, updated);
-
-  const hasChanges = Object.keys(changes).length > 0;
-  if (hasChanges) {
-    console.log(`[ESM] ${roomId} → State updated. Changes:`, changes);
+  // Determine Status Summary
+  if (room.riskLevel === "CRITICAL" || room.riskLevel === "HIGH") {
+    room.statusSummary = "Breach Detected";
+  } else if (room.riskLevel === "MEDIUM") {
+    room.statusSummary = "Wastage Warning";
   } else {
-    console.log(`[ESM] ${roomId} → No state changes detected.`);
+    room.statusSummary = "Optimal";
   }
 
-  // 7. Return structured diff object for downstream consumers
+  // Action Orchestration & Incident Generation based on Agent recommendations
+  await orchestrateDecisions(room);
+
   return {
     roomId,
-    updated,
-    previous,
-    changes,
-    hasChanges,
+    updated: room
   };
 };
 
-// ---------------------------------------------------------------------------
-// Module Exports
-// ---------------------------------------------------------------------------
+/**
+ * Intercept Agent outputs and fire appropriate alerts or actions.
+ */
+const orchestrateDecisions = async (room) => {
+  const { roomId, agents, roomName } = room;
+
+  // 1. Handle Security anomalies
+  if (agents.security.decision === "UNAUTHORIZED_ACCESS_RISK") {
+    incidentService.createIncident(
+      roomId,
+      "Unauthorized Entry",
+      `Pre-authorization breach: Personnel detected in restricted ${roomName}.`,
+      "HIGH"
+    );
+    actionEngine.triggerAction(roomId, "SEND_NOTIFICATION", { reason: "Unauthorized entrance flag raised." });
+  } else if (agents.security.decision === "INTRUSION_ALERT") {
+    incidentService.createIncident(
+      roomId,
+      "Security Breach: Intrusion",
+      `Critical security anomaly. Intrusion detected in armed ${roomName}.`,
+      "CRITICAL"
+    );
+    actionEngine.triggerAction(roomId, "ACTIVATE_ALARM", { reason: "Armed boundary breached." });
+  } else {
+    incidentService.autoResolveIncident(roomId, "Unauthorized Entry");
+    incidentService.autoResolveIncident(roomId, "Security Breach: Intrusion");
+  }
+
+  // 2. Handle Energy anomalies
+  if (agents.energy.decision === "ENERGY_WASTAGE_DETECTED") {
+    incidentService.createIncident(
+      roomId,
+      "Energy Efficiency Alert",
+      `Devices remain active in unoccupied room: ${roomName}.`,
+      "MEDIUM"
+    );
+
+    // Auto-trigger recommended saving shutdowns
+    if (agents.energy.recommendedAction === "TURN_OFF_LIGHTS") {
+      actionEngine.triggerAction(roomId, "TURN_OFF_LIGHTS", { reason: "Automated eco-saving protocol." });
+    } else if (agents.energy.recommendedAction === "TURN_OFF_FAN") {
+      actionEngine.triggerAction(roomId, "TURN_OFF_FAN", { reason: "Automated eco-saving protocol." });
+    }
+  } else {
+    incidentService.autoResolveIncident(roomId, "Energy Efficiency Alert");
+  }
+
+  // 3. Handle Safety anomalies
+  if (agents.safety.decision === "SAFETY_HAZARD_DETECTED") {
+    incidentService.createIncident(
+      roomId,
+      "Safety Warning: Obstruction",
+      `Emergency exit or pathway obstructed in ${roomName}.`,
+      "HIGH"
+    );
+    actionEngine.triggerAction(roomId, "CREATE_INCIDENT", { reason: "Obstacle obstruction alert." });
+  } else if (agents.safety.decision === "CROWD_LIMIT_EXCEEDED") {
+    incidentService.createIncident(
+      roomId,
+      "Crowd Limit Warning",
+      `Personnel density exceeds safety threshold in ${roomName}.`,
+      "MEDIUM"
+    );
+    actionEngine.triggerAction(roomId, "SEND_NOTIFICATION", { reason: "Density safety limits warning." });
+  } else {
+    incidentService.autoResolveIncident(roomId, "Safety Warning: Obstruction");
+    incidentService.autoResolveIncident(roomId, "Crowd Limit Warning");
+  }
+};
+
+/**
+ * Calculates global operational metrics
+ */
+const getMetrics = () => {
+  const roomsList = Array.from(rooms.values());
+  const allIncidents = incidentService.getIncidents();
+  const allActions = actionEngine.getActionsHistory();
+
+  const occupiedCount = roomsList.filter(r => r.occupancyStatus === "Occupied").length;
+  const occupancyRate = roomsList.length > 0 ? Math.round((occupiedCount / roomsList.length) * 100) : 0;
+
+  // Score Calculations (Deductive starting from 100)
+  const activeSecurityIncidents = allIncidents.filter(i => i.status === "active" && (i.title.includes("Entry") || i.title.includes("Intrusion"))).length;
+  const securityScore = Math.max(0, 100 - activeSecurityIncidents * 20);
+
+  const activeSafetyIncidents = allIncidents.filter(i => i.status === "active" && (i.title.includes("Safety") || i.title.includes("Crowd"))).length;
+  const safetyScore = Math.max(0, 100 - activeSafetyIncidents * 15);
+
+  const energyWasteCount = roomsList.filter(r => r.agents.energy.decision === "ENERGY_WASTAGE_DETECTED").length;
+  const energyEfficiencyScore = Math.max(0, 100 - energyWasteCount * 25);
+
+  const totalConf = roomsList.reduce((sum, r) => sum + r.confidence, 0);
+  const aiConfidenceAverage = roomsList.length > 0 ? Math.round((totalConf / roomsList.length) * 100) : 95;
+
+  const incidentsToday = allIncidents.length;
+  const actionsExecuted = allActions.filter(a => a.status === "completed").length;
+
+  // Dynamic estimate of saved energy: 0.15kWh per turn-off action completed
+  const turnOffActions = allActions.filter(a => a.status === "completed" && a.type.startsWith("TURN_OFF")).length;
+  const estimatedEnergySaved = parseFloat((turnOffActions * 0.18).toFixed(2));
+
+  return {
+    occupancyRate,
+    securityScore,
+    safetyScore,
+    energyEfficiencyScore,
+    aiConfidenceAverage,
+    incidentsToday,
+    actionsExecuted,
+    estimatedEnergySaved
+  };
+};
+
 module.exports = {
   createRoom,
   getRoom,
   getAllRooms,
   deleteRoom,
-  updateRoom,
+  updateDeviceState,
   updateEnvironmentState,
+  getMetrics
 };

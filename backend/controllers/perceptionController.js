@@ -82,39 +82,23 @@ const perceiveFrame = async (req, res) => {
 
         // 4. Feed raw perception objects into the Environment State Manager
         //    ESM handles all state diffing, occupancy transitions, and timestamps
-        const nodeId = req.body.nodeId || "NODE_01";
+        let targetRoomId = req.body.roomId || req.body.nodeId || "ROOM_A";
+        if (targetRoomId === "NODE_01") {
+            targetRoomId = "ROOM_A";
+        }
+        
         const esmResult = await ESM.updateEnvironmentState(
-            nodeId,
+            targetRoomId,
             { objects },
-            req.body.cameraId || nodeId
+            req.body.cameraId || targetRoomId
         );
 
-        // 5. Build the dashboard-friendly roomState from the ESM output
         const { updated } = esmResult;
-        const hasWarningObj = updated.detectedObjects.some(label =>
-            label === "unidentified object" ||
-            label === "obstacle" ||
-            label === "forklift"
-        );
-
-        const roomState = {
-            locationId: updated.roomId,
-            locationName: "Main Office / Lab",
-            peopleCount: updated.peopleCount,
-            detectedObjects: updated.detectedObjects,
-            roomStatus: updated.occupancyStatus === "Occupied" ? "Active" : "Empty",
-            safetyStatus: hasWarningObj ? "Warning" : "Secure",
-            lastUpdated: new Date().toLocaleTimeString(),
-            roomEmptySince: updated.roomEmptySince,
-            confidence: updated.confidence,
-        };
 
         // Return processed state and ingest data to frontend
         res.json({
             success: true,
-            roomState,
-            esmState: updated,
-            changes: esmResult.changes,
+            roomState: updated,
             afferensIngest: ingestData,
         });
 

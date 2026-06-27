@@ -3,6 +3,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const perceptionRoutes = require("./routes/perception");
 const roomsRoutes = require("./routes/rooms");
+const operationsRoutes = require("./routes/operations");
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Routing mounts
 app.use("/api", perceptionRoutes);
+app.use("/api", operationsRoutes);
 app.use("/api/rooms", roomsRoutes);
 
 app.listen(PORT, () => {
