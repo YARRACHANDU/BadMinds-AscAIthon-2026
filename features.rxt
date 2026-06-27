@@ -1,0 +1,72 @@
+========================================================================
+                 SENTINELAI X — PLATFORM FEATURES LIST
+        "The Operating System for Physical Spaces" (Version 2.0 PRO)
+========================================================================
+
+SentinelAI X is an Autonomous Physical AI Operations Platform. Here is 
+the list of features currently implemented in the application:
+
+1. EXECUTIVE AI COPILOT PORTAL ("ChatGPT for Operations Teams")
+   * Conversational Interface: Admin chat portal at the top of the 
+     dashboard responding to natural language operations queries.
+   * Context-Aware: Queries the live state database to answer questions 
+     regarding security threats, energy wastage, or safety hazards.
+   * Operations Overview: Real-time summaries of campus status, monitored 
+     nodes, active agents, active tickets, and estimated ROI.
+
+2. MULTI-AGENT AI REASONING SYSTEM
+   * Four specialized autonomous AI agents auditing every frame:
+     - Security Agent: Detects unauthorized entries and suspicious movements.
+       Outputs: Observation, reasoning, confidence, decision, recommended action.
+     - Energy Agent: Spots resource wastage and computes monetary loss.
+       Outputs: Observation, reasoning, savings estimate (INR), decision, recommended action.
+     - Safety Agent: Monitors personnel crowd densities and pathway hazards.
+       Outputs: Observation, risk level, reasoning, decision, action.
+     - Facility Agent: Tracks structural health and maintenance cycles.
+       Outputs: Observation, facility health score, recommendation, priority.
+
+3. DIGITAL TWIN COMMAND CENTER
+   * Multi-Facility Support: Organized across five distinct campus blocks:
+     - Engineering Block (Robotics Lab, Main Lecture Hall)
+     - Library (Main Reading Room, Quiet Study Zone)
+     - Administration Block (Registrar's Office)
+     - Research Center (AI & Robotics Suite)
+     - Hostel Block (Dining Area Hall)
+   * Real-Time Widgets: Displaying occupancy counters, risk profiles, 
+     average AI confidence, and live status summary flags.
+
+4. REAL-TIME BUSINESS VALUE ROI DASHBOARD
+   * Energy Savings Indices: Tracks monetary savings today, this week, 
+     this month, and projected annual savings in INR.
+   * Operational Metrics:
+     - Operational Efficiency Score (resolved-to-active ticket ratio).
+     - Incident Reduction Index (-74% vs historical baseline).
+     - Automation Success Rate (completed-to-total actuator ratio).
+
+5. CENTRALIZED ACTION ORCHESTRATION ENGINE
+   * Handles state machines for automated/manual actuator deployments.
+   * Tracks execution flows: PENDING -> EXECUTING -> COMPLETED -> FAILED.
+   * Audits device overrides for Lights, Fans, Alarms, and Door Locks.
+
+6. INCIDENT MANAGEMENT SYSTEM
+   * Automates incident ticketing based on multi-agent violations.
+   * Support for four severity ratings: LOW, MEDIUM, HIGH, CRITICAL.
+   * Real-Time Resolvers: Clickable ticket buttons that update states.
+
+7. PLUGGABLE ESP32 / IOT ABSTRACTION LAYER
+   * Built-in interfaces for:
+     - turnLightOn() / turnLightOff()
+     - turnFanOn() / turnFanOff()
+     - activateAlarm() / deactivateAlarm()
+     - lockDoor() / unlockDoor()
+   * Latency Simulator: Simulates a network call to hardware, resolving 
+     automatically if physical ESP32 boards are offline.
+
+8. CHRONOLOGICAL EVENT TIMELINE & PREDICTIVE ANALYTICS
+   * Sequential visual logs of sensor signals, occupancy, and agent actions.
+   * Pre-calculated utilization insights and eco-saving recommendations.
+
+9. FUTURISTIC ENTERPRISE UI
+   * Dark-mode glassmorphism theme with neon-accented alerts.
+   * Bounding box overlay HUD for webcam video streams and radar scans.
+========================================================================
