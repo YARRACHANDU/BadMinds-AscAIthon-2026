@@ -1,151 +1,425 @@
-# BadMinds-AscAIthon-2026
-Physical AI Operations Manager — An AI agent powered by Afferens that perceives real-world environments, reasons on verified sensory data, and autonomously performs intelligent actions to improve safety, security, and operational efficiency.
+# SentinelAI X
 
+### The Operating System for Physical Spaces
 
-# Physical AI Operations Manager
-# Overview
+SentinelAI X is an Autonomous Physical AI Operations Platform that transforms traditional physical infrastructure into intelligent, self-aware, and operationally optimized environments.
 
-Physical AI Operations Manager is an autonomous AI system that bridges the gap between software intelligence and physical reality.
+Unlike conventional CCTV systems that merely record events, SentinelAI X continuously observes, understands, reasons, decides, and acts upon real-world situations using AI-powered perception and autonomous decision-making.
 
-The platform enables an AI agent to continuously observe its surroundings using cameras and sensors, understand real-world conditions through the Afferens API, and perform intelligent actions based on verified environmental perception.
-
-Unlike traditional automation systems that rely on predefined rules, our solution creates a complete closed-loop system:
-
-Sense → Understand → Decide → Act
-
-This allows the agent to make context-aware decisions and interact with the physical world in real time.
+---
 
 # Problem Statement
 
-Organizations such as colleges, offices, factories, farms, and public facilities depend heavily on manual supervision to monitor physical environments.
+Modern organizations such as universities, hospitals, offices, factories, research centers, and smart campuses rely on:
 
-This often leads to:
+- CCTV Cameras
+- Security Personnel
+- Facility Management Teams
+- Energy Monitoring Systems
+- Incident Management Tools
 
-Resource wastage
-Safety violations
-Unauthorized access
-Delayed issue detection
-Increased operational costs
-Human monitoring limitations
+These systems operate independently and are largely reactive.
 
-Current AI systems are excellent at processing information but lack verified awareness of the physical world before making decisions.
+Traditional CCTV systems can record incidents but cannot:
 
-# Our Solution
+- Understand what is happening
+- Reason about risks
+- Detect operational inefficiencies
+- Make intelligent decisions
+- Initiate corrective actions
 
-Physical AI Operations Manager provides an intelligent monitoring and decision-making platform that:
+As a result:
 
-Continuously perceives the environment
-Understands real-world situations using Afferens
-Makes context-aware decisions
-Executes actions automatically
-Provides real-time alerts and insights
+- Energy wastage remains unnoticed
+- Incidents are detected late
+- Facility operations remain manual
+- Security monitoring requires constant human oversight
 
-The system transforms passive monitoring into active autonomous operations management.
+---
 
-# How It Works
-1. Sense
+# Solution
 
-The system collects real-world information through:
+SentinelAI X introduces a Physical AI Layer between the physical world and operational teams.
 
-Camera feeds
-Motion sensors
-Environmental sensors
-2. Understand
+The platform continuously:
 
-Captured sensory data is sent to the Afferens API for grounded perception.
+1. Observes physical environments
+2. Understands environmental conditions
+3. Reasons about operational states
+4. Generates decisions
+5. Executes actions
+6. Measures impact
 
-The AI agent receives verified information about:
+This enables organizations to move from passive monitoring to autonomous operations.
 
-Human presence
-Object detection
-Activities
-Environmental conditions
-3. Decide
+---
 
-The AI agent evaluates the current situation and determines the most appropriate action.
+# System Architecture
+
+Physical Environment
+↓
+CCTV Cameras / Sensors
+↓
+Perception Engine
+↓
+Environment State Manager
+↓
+Multi-Agent AI Reasoning
+↓
+Decision Engine
+↓
+Action Orchestration Engine
+↓
+Incident Management
+↓
+Executive Command Center
+
+---
+
+# Core Features
+
+## AI Perception Center
+
+Provides real-time awareness of physical spaces.
+
+Capabilities:
+
+- Live Camera Monitoring
+- Occupancy Detection
+- Environmental Analysis
+- Physical Space Awareness
+- Camera-to-Space Mapping
+- Real-Time State Updates
+
+---
+
+## Multi-Agent AI Reasoning System
+
+SentinelAI X utilizes specialized autonomous AI agents.
+
+### Security Agent
+
+Responsibilities:
+
+- Unauthorized Access Detection
+- Restricted Area Monitoring
+- Security Risk Assessment
+- Incident Escalation
+
+### Energy Agent
+
+Responsibilities:
+
+- Energy Waste Detection
+- Resource Utilization Monitoring
+- Operational Efficiency Analysis
+- Cost Optimization
+
+### Safety Agent
+
+Responsibilities:
+
+- Safety Hazard Identification
+- Occupancy Compliance
+- Environmental Risk Monitoring
+
+### Facility Agent
+
+Responsibilities:
+
+- Facility Health Monitoring
+- Maintenance Recommendations
+- Space Utilization Analysis
+
+---
+
+## Digital Twin Infrastructure
+
+Create and manage:
+
+- Organizations
+- Buildings
+- Floors
+- Labs
+- Classrooms
+- Offices
+- Research Centers
+- Hostels
+- Dining Areas
+
+Provides a live operational digital twin of physical infrastructure.
+
+---
+
+## Autonomous Decision Engine
+
+Converts perception into action.
 
 Examples:
 
-Empty room detected
-Lights left ON
-Unauthorized person detected
-Safety violation identified
-4. Act
+### Scenario 1
 
-Based on the decision, the system can:
+Observation:
 
-Send alerts
-Trigger alarms
-Control connected devices
-Generate reports
-Create maintenance notifications
-# System Architecture
-Camera / Sensors
-        │
-        ▼
-   Afferens API
-        │
-        ▼
-   AI Agent Engine
-        │
-        ▼
- Decision Logic
-        │
-        ▼
- Intelligent Actions
-        │
- ┌──────┼─────────┐
- ▼      ▼         ▼
-Alerts  Reports  Device Control
-# Key Features
-Real-time physical environment perception
-Grounded AI decision-making
-Autonomous action execution
-Safety and security monitoring
-Resource optimization
-Scalable architecture
-Real-world deployment ready
+Room Empty
+
+Decision:
+
+Potential Energy Waste
+
+Action:
+
+Notify Facility Manager
+
+---
+
+### Scenario 2
+
+Observation:
+
+Unauthorized Presence
+
+Decision:
+
+Security Risk
+
+Action:
+
+Create Incident
+
+---
+
+## Incident Management System
+
+Supports:
+
+- LOW Severity
+- MEDIUM Severity
+- HIGH Severity
+- CRITICAL Severity
+
+Features:
+
+- Incident Tracking
+- Ownership Assignment
+- Resolution Workflow
+- Audit Trail
+
+---
+
+## Action Orchestration Engine
+
+Manages autonomous and manual actions.
+
+Supported Actions:
+
+- Turn Lights ON/OFF
+- Turn Fans ON/OFF
+- Activate Alarms
+- Lock Doors
+- Unlock Doors
+- Escalate Incidents
+
+Action States:
+
+PENDING → EXECUTING → COMPLETED → FAILED
+
+---
+
+## Executive AI Copilot
+
+Natural language operational assistant.
+
+Example Queries:
+
+- Which rooms are occupied?
+- Which incidents remain unresolved?
+- Which spaces are wasting energy?
+- What actions were executed today?
+- Give me a campus operational summary.
+
+---
+
+## Analytics & ROI Dashboard
+
+Measures:
+
+- Energy Savings
+- Operational Efficiency
+- Incident Reduction
+- Autonomous Actions
+- Carbon Reduction
+- Utilization Metrics
+
+---
+
+# Advanced Features
+
+## Dynamic Alert Routing
+
+Automatically routes incidents to responsible stakeholders.
+
+Examples:
+
+Security Issues → Security Officer
+
+Energy Issues → Facility Manager
+
+Safety Issues → Safety Team
+
+Maintenance Issues → Operations Team
+
+---
+
+## Digital Twin Timeline
+
+Replay operational events.
+
+Example:
+
+09:00 PM → Person Entered
+
+09:05 PM → Occupancy Detected
+
+09:15 PM → Room Empty
+
+09:20 PM → Energy Waste Identified
+
+09:21 PM → Action Triggered
+
+---
+
+## Predictive Operations
+
+Future capability:
+
+- Occupancy Forecasting
+- Energy Demand Prediction
+- Risk Forecasting
+- Predictive Maintenance
+
+---
+
 # Technology Stack
-Frontend
-Next.js
-React
-Tailwind CSS
-Backend
-Node.js / FastAPI
-REST APIs
-AI & Perception
-Afferens API
-Vision Processing
-AI Agent Framework
-Hardware
-Camera Module
-ESP32 / Raspberry Pi
-Motion Sensors
-# Demo Scenarios
-Smart Infrastructure Monitoring
-Detects empty rooms
-Turns off unnecessary devices
-Reduces energy wastage
-Security Monitoring
-Detects unauthorized access
-Sends instant alerts
-Safety Compliance
-Monitors operational environments
-Identifies unsafe conditions
-# Impact
 
-Physical AI Operations Manager enables organizations to:
+## Frontend
 
-Reduce operational costs
-Improve safety
-Enhance security
-Automate monitoring
-Increase efficiency
-Enable real-world AI autonomy
-# Future Scope
-Smart campuses
-Industrial monitoring
-Agriculture automation
-Warehouse intelligence
-Retail operations management
-Smart city infrastructure
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+
+## Backend
+
+- Node.js
+- Express.js
+
+## AI & Computer Vision
+
+- TensorFlow.js
+- BlazeFace
+- COCO-SSD
+- Afferens Vision Integration
+
+## Database
+
+- MongoDB
+
+## Hardware Layer
+
+- ESP32 Integration
+- IoT Sensors
+- Smart Actuators
+
+---
+
+# Physical AI Workflow
+
+Observe
+↓
+Understand
+↓
+Decide
+↓
+Act
+↓
+Measure Impact
+
+This workflow forms the foundation of SentinelAI X.
+
+---
+
+# Real-World Applications
+
+### Universities
+
+- Smart Classrooms
+- Research Labs
+- Hostels
+- Libraries
+
+### Hospitals
+
+- Restricted Area Monitoring
+- Facility Management
+- Compliance Auditing
+
+### Factories
+
+- Safety Monitoring
+- Energy Optimization
+- Operational Intelligence
+
+### Offices
+
+- Occupancy Management
+- Space Utilization
+- Security Monitoring
+
+### Smart Cities
+
+- Infrastructure Monitoring
+- Public Facility Management
+- Autonomous Operations
+
+---
+
+# Future Vision
+
+Our vision is to build the Operating System for Physical Infrastructure.
+
+SentinelAI X aims to transform physical spaces into autonomous environments capable of:
+
+- Perceiving
+- Understanding
+- Predicting
+- Deciding
+- Acting
+- Learning
+- Optimizing
+
+without requiring constant human supervision.
+
+---
+
+# Team Vision
+
+Traditional CCTV Systems Watch.
+
+SentinelAI X Understands.
+
+Traditional Monitoring Systems Generate Alerts.
+
+SentinelAI X Creates Actions.
+
+Physical Spaces Should Not Just Be Monitored.
+
+They Should Be Autonomous.
+
+---
+
+## Hack Aarambh 2026
+
+### Physical Perception Challenge Submission
+
+Built for the future of Physical AI, Autonomous Infrastructure, and Intelligent Operations.
