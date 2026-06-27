@@ -111,7 +111,14 @@ const SpaceSchema = new Schema({
     smokeDetected: { type: Boolean, default: false },
     waterLeakage: { type: Boolean, default: false },
     blockedExits: { type: Boolean, default: false },
-    visibilityCondition: { type: String, default: "Clear" }
+    visibilityCondition: { type: String, default: "Clear" },
+    brightnessLevel: { type: Number, default: 50 },
+    illuminationScore: { type: Number, default: 50 },
+    motionActivity: { type: String, default: "None" },
+    fanActivity: { type: String, default: "Not Detected" },
+    energyEfficiencyState: { type: String, default: "Normal Operation" },
+    lightingStatus: { type: String, default: "Likely OFF" },
+    roomState: { type: String, default: "Empty + Dark" }
   },
 
   // Universal Asset Classification Model

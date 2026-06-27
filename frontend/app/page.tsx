@@ -118,6 +118,7 @@ export default function Home() {
   const [debugConfidence, setDebugConfidence] = useState<string>("0%");
   const [debugOccupancyState, setDebugOccupancyState] = useState<string>("Empty");
   const [debugDecisionOutput, setDebugDecisionOutput] = useState<string>("No Action Required");
+  const [currentDetections, setCurrentDetections] = useState<Array<{ label: string; confidence: number }>>([]);
 
   const refreshSettingsLists = useCallback(async () => {
     try {
@@ -302,6 +303,16 @@ export default function Home() {
   // Lookup active focused room
   const activeRoom = rooms.find((r) => r.roomId === selectedRoomId) || rooms[0];
 
+  // Helper to fallback to database-reported objects with default confidence if live frame is not yet ingested
+  const displayDetections = currentDetections.length > 0
+    ? currentDetections
+    : (activeRoom?.detectedObjects || []).map((obj: string) => ({ label: obj, confidence: 0.95 }));
+
+  // Clear live detections on room switch to avoid cross-room contamination
+  useEffect(() => {
+    setCurrentDetections([]);
+  }, [selectedRoomId]);
+
   // Determine if system-wide Crisis Mode should activate (any active critical incident or manual trigger)
   const activeCriticalIncidents = incidents.filter(i => i.severity === "CRITICAL" && i.status === "active");
   const isCrisisMode = manualCrisis || activeCriticalIncidents.length > 0;
@@ -468,10 +479,15 @@ export default function Home() {
 
   // Ingest video frames
   const handleFrameCapture = useCallback(
-    async (base64Image: string, detectedObjects: Array<{ label: string; confidence: number }> = []) => {
+    async (
+      base64Image: string,
+      detectedObjects: Array<{ label: string; confidence: number }> = [],
+      environmental?: any
+    ) => {
       if (isProcessing || simulationMode !== "webcam") return;
       setIsProcessing(true);
       setDebugFrameSent(new Date().toLocaleTimeString());
+      setCurrentDetections(detectedObjects);
 
       try {
         const response = await fetch(`${backendUrl}/api/perceive`, {
@@ -480,7 +496,8 @@ export default function Home() {
           body: JSON.stringify({
             roomId: selectedRoomId,
             image: base64Image,
-            objects: detectedObjects
+            objects: detectedObjects,
+            environmental
           })
         });
 
@@ -493,8 +510,8 @@ export default function Home() {
             const room = data.roomState;
             setDebugApiResponse(JSON.stringify({ success: data.success, roomId: room.roomId, timestamp: new Date().toISOString() }, null, 2));
             setDebugDetectedObjects(
-              room.detectedObjects && room.detectedObjects.length > 0
-                ? room.detectedObjects.map((obj: string) => obj.charAt(0).toUpperCase() + obj.slice(1)).join(", ")
+              detectedObjects && detectedObjects.length > 0
+                ? detectedObjects.map((obj) => `${obj.label.charAt(0).toUpperCase() + obj.label.slice(1)} (${Math.round(obj.confidence * 100)}%)`).join(", ")
                 : "None"
             );
             setDebugConfidence(`${room.occupancyConfidence || 100}%`);
@@ -578,12 +595,10 @@ export default function Home() {
       // Trigger alerts or typical office movement
       if (targetId === "ROOM_RES_LAB" || targetId.includes("ENG_101")) {
         if (randVal > 0.6) {
-          // Intrusion simulation
           mockObjects.push({ label: "person", confidence: 0.99 });
         }
       } else if (targetId === "ROOM_HOS_MESS") {
         if (randVal > 0.4) {
-          // Crowd simulation
           const crowds = Math.floor(Math.random() * 10) + 2;
           for (let i = 0; i < crowds; i++) {
             mockObjects.push({ label: "person", confidence: 0.9 + Math.random() * 0.09 });
@@ -592,6 +607,24 @@ export default function Home() {
       } else {
         if (randVal > 0.3) {
           mockObjects.push({ label: "person", confidence: 0.95 });
+        }
+      }
+
+      // Add environmental assets / physical inventory objects to the simulation
+      const possibleAssets = [
+        { label: "chair", confidence: 0.85 + Math.random() * 0.14 },
+        { label: "laptop", confidence: 0.88 + Math.random() * 0.11 },
+        { label: "tv", confidence: 0.90 + Math.random() * 0.09 },
+        { label: "fan", confidence: 0.82 + Math.random() * 0.15 },
+        { label: "door", confidence: 0.95 },
+        { label: "monitor", confidence: 0.91 + Math.random() * 0.08 }
+      ];
+      // Randomly select 1 to 4 assets to add
+      const numAssets = Math.floor(Math.random() * 3) + 2;
+      for (let i = 0; i < numAssets; i++) {
+        const asset = possibleAssets[Math.floor(Math.random() * possibleAssets.length)];
+        if (!mockObjects.some(o => o.label === asset.label)) {
+          mockObjects.push(asset);
         }
       }
 
@@ -609,12 +642,13 @@ export default function Home() {
         if (response.ok && targetId === selectedRoomId) {
           const data = await response.json();
           setDebugFrameSent(new Date().toLocaleTimeString() + " (Simulated)");
+          setCurrentDetections(mockObjects);
           if (data.success && data.roomState) {
             const room = data.roomState;
             setDebugApiResponse(JSON.stringify({ success: data.success, roomId: room.roomId, timestamp: new Date().toISOString() }, null, 2));
             setDebugDetectedObjects(
-              room.detectedObjects && room.detectedObjects.length > 0
-                ? room.detectedObjects.map((obj: string) => obj.charAt(0).toUpperCase() + obj.slice(1)).join(", ")
+              mockObjects && mockObjects.length > 0
+                ? mockObjects.map((obj) => `${obj.label.charAt(0).toUpperCase() + obj.label.slice(1)} (${Math.round(obj.confidence * 100)}%)`).join(", ")
                 : "None"
             );
             setDebugConfidence(`${room.occupancyConfidence || 100}%`);
@@ -881,9 +915,9 @@ export default function Home() {
                 {/* 1. OBSERVE */}
                 <div className="bg-[#09090b] border border-zinc-900 rounded-xl p-5 flex flex-col gap-2 shadow-sm">
                   <span className="text-[10px] tracking-wider font-semibold text-zinc-500 font-mono">1. OBSERVATION</span>
-                  <span className="text-lg font-bold tracking-tight text-white">
-                    {activeRoom?.detectedObjects && activeRoom.detectedObjects.length > 0
-                      ? activeRoom.detectedObjects.map(obj => `1 ${obj.charAt(0).toUpperCase() + obj.slice(1)}`).join(", ")
+                  <span className="text-sm font-bold tracking-tight text-white line-clamp-2 min-h-[40px] flex items-center">
+                    {displayDetections && displayDetections.length > 0
+                      ? displayDetections.map(d => `${d.label.charAt(0).toUpperCase() + d.label.slice(1)} (${Math.round(d.confidence * 100)}%)`).join(", ")
                       : "None Detected"}
                   </span>
                   <span className="text-[10px] text-zinc-400">
@@ -1029,19 +1063,25 @@ export default function Home() {
                         <span className="text-zinc-500 text-[10px] uppercase font-bold">Location</span>
                         <span className="font-semibold text-white">{activeRoom?.floorName || "Floor 1"}, {activeRoom?.facility || "Engineering Block"}</span>
                       </div>
-                      <div className="flex flex-col gap-0.5">
+                      <div className="flex flex-col gap-0.5 col-span-2 border-t border-b border-zinc-900 py-3">
                         <span className="text-zinc-500 text-[10px] uppercase font-bold">Detected Objects</span>
-                        <span className="font-semibold text-white font-mono text-emerald-400">
-                          {activeRoom?.detectedObjects && activeRoom.detectedObjects.length > 0
-                            ? activeRoom.detectedObjects.map(obj => `1 ${obj.charAt(0).toUpperCase() + obj.slice(1)}`).join(", ")
-                            : "None"}
-                        </span>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {displayDetections && displayDetections.length > 0 ? (
+                            displayDetections.map((d, idx) => (
+                              <span key={idx} className="bg-zinc-950 border border-zinc-900 text-[10.5px] font-mono text-emerald-400 px-2 py-0.5 rounded">
+                                {d.label.charAt(0).toUpperCase() + d.label.slice(1)} ({Math.round(d.confidence * 100)}%)
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-zinc-500 font-mono text-[10px]">None</span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-zinc-500 text-[10px] uppercase font-bold">Occupancy</span>
                         <span className="font-semibold text-white font-mono text-emerald-400">{activeRoom?.occupancyStatus || "Empty"}</span>
                       </div>
-                      <div className="flex flex-col gap-0.5 col-span-2 border-t border-zinc-900 pt-3">
+                      <div className="flex flex-col gap-0.5">
                         <span className="text-zinc-500 text-[10px] uppercase font-bold">Confidence</span>
                         <span className="font-semibold text-emerald-500">{activeRoom?.occupancyConfidence || 100}%</span>
                       </div>
@@ -1087,6 +1127,30 @@ export default function Home() {
                         <span className="col-span-2 text-white font-bold text-right text-emerald-400">{debugDecisionOutput}</span>
                       </div>
 
+                      <div className="border-t border-zinc-900 pt-3 flex flex-col gap-2">
+                        <span className="text-zinc-500 font-bold uppercase text-[9px]">Model Pipeline Status</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="bg-zinc-950 p-2 rounded border border-zinc-900 flex items-center justify-between text-[10px]">
+                            <span className="text-zinc-400">Person Detection</span>
+                            <span className="text-emerald-500 font-semibold flex items-center gap-1">
+                              Active
+                            </span>
+                          </div>
+                          <div className="bg-zinc-950 p-2 rounded border border-zinc-900 flex items-center justify-between text-[10px]">
+                            <span className="text-zinc-400">Object Detection</span>
+                            <span className="text-emerald-500 font-semibold flex items-center gap-1">
+                              Active
+                            </span>
+                          </div>
+                          <div className="bg-zinc-950 p-2 rounded border border-zinc-900 flex items-center justify-between text-[10px]">
+                            <span className="text-zinc-400">Occupancy Engine</span>
+                            <span className="text-emerald-500 font-semibold flex items-center gap-1">
+                              Active
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="flex flex-col gap-1.5 pt-2">
                         <span className="text-zinc-500 font-bold uppercase text-[9px]">Ingest API Response</span>
                         <pre className="bg-zinc-950 p-3 rounded-lg border border-zinc-900 text-[10px] text-zinc-400 overflow-x-auto max-h-[160px] font-mono leading-relaxed">
@@ -1097,6 +1161,73 @@ export default function Home() {
                   </div>
                 </div>
 
+              </div>
+
+              {/* PHYSICAL ASSET INVENTORY */}
+              <div className="bg-[#09090b] border border-zinc-900 rounded-xl p-6 flex flex-col gap-4 shadow-sm mt-4">
+                <div className="border-b border-zinc-900 pb-3 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider">Physical Asset Inventory</h3>
+                  <span className="text-[10px] text-zinc-500 font-mono font-medium">Auto-Syncing</span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
+                  {/* People */}
+                  <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-900 flex flex-col gap-1">
+                    <span className="text-zinc-500 font-bold uppercase text-[9px]">People</span>
+                    <span className="text-lg font-bold text-white">
+                      {displayDetections.filter(d => d.label.toLowerCase() === "person").length}
+                    </span>
+                    <span className="text-[9px] text-zinc-500 truncate">
+                      {displayDetections.filter(d => d.label.toLowerCase() === "person")
+                        .map(d => `Person (${Math.round(d.confidence * 100)}%)`).join(", ") || "None"}
+                    </span>
+                  </div>
+
+                  {/* Furniture */}
+                  <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-900 flex flex-col gap-1">
+                    <span className="text-zinc-500 font-bold uppercase text-[9px]">Furniture</span>
+                    <span className="text-lg font-bold text-white">
+                      {displayDetections.filter(d => 
+                        ["chair", "couch", "table", "bed", "sofa", "dining table"].includes(d.label.toLowerCase())
+                      ).length}
+                    </span>
+                    <span className="text-[9px] text-zinc-500 truncate">
+                      {displayDetections.filter(d => 
+                        ["chair", "couch", "table", "bed", "sofa", "dining table"].includes(d.label.toLowerCase())
+                      ).map(d => `${d.label.charAt(0).toUpperCase() + d.label.slice(1)} (${Math.round(d.confidence * 100)}%)`).join(", ") || "None"}
+                    </span>
+                  </div>
+
+                  {/* Electronics */}
+                  <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-900 flex flex-col gap-1">
+                    <span className="text-zinc-500 font-bold uppercase text-[9px]">Electronics</span>
+                    <span className="text-lg font-bold text-white">
+                      {displayDetections.filter(d => 
+                        ["laptop", "computer", "tv", "cell phone", "mouse", "keyboard", "monitor"].includes(d.label.toLowerCase())
+                      ).length}
+                    </span>
+                    <span className="text-[9px] text-zinc-500 truncate">
+                      {displayDetections.filter(d => 
+                        ["laptop", "computer", "tv", "cell phone", "mouse", "keyboard", "monitor"].includes(d.label.toLowerCase())
+                      ).map(d => `${d.label.charAt(0).toUpperCase() + d.label.slice(1)} (${Math.round(d.confidence * 100)}%)`).join(", ") || "None"}
+                    </span>
+                  </div>
+
+                  {/* Infrastructure */}
+                  <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-900 flex flex-col gap-1">
+                    <span className="text-zinc-500 font-bold uppercase text-[9px]">Infrastructure</span>
+                    <span className="text-lg font-bold text-white">
+                      {displayDetections.filter(d => 
+                        ["door", "window", "wall", "ceiling", "light", "fan"].includes(d.label.toLowerCase())
+                      ).length}
+                    </span>
+                    <span className="text-[9px] text-zinc-500 truncate">
+                      {displayDetections.filter(d => 
+                        ["door", "window", "wall", "ceiling", "light", "fan"].includes(d.label.toLowerCase())
+                      ).map(d => `${d.label.charAt(0).toUpperCase() + d.label.slice(1)} (${Math.round(d.confidence * 100)}%)`).join(", ") || "None"}
+                    </span>
+                  </div>
+                </div>
               </div>
 
             </div>
@@ -1151,22 +1282,48 @@ export default function Home() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 text-xs pt-3">
-                      <div>
-                        <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Detected Objects</span>
-                        <span className="text-white font-bold">
-                          {activeRoom?.detectedObjects && activeRoom.detectedObjects.length > 0
-                            ? activeRoom.detectedObjects.map(obj => `1 ${obj.charAt(0).toUpperCase() + obj.slice(1)}`).join(", ")
-                            : "No objects detected."}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Occupancy</span>
-                        <span className="text-white font-bold">{activeRoom?.occupancyStatus || "Empty"}</span>
-                      </div>
+                      {activeRoom?.environmental?.brightnessLevel !== undefined ? (
+                        <>
+                          <div className="col-span-2">
+                            <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Objects</span>
+                            <span className="text-white font-bold">
+                              {displayDetections && displayDetections.length > 0
+                                ? displayDetections.map(d => `${d.label.charAt(0).toUpperCase() + d.label.slice(1)} (${Math.round(d.confidence * 100)}%)`).join(", ")
+                                : "None"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Environment</span>
+                            <span className="text-white font-bold">
+                              {activeRoom?.environmental?.lightingCondition || "Normal"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Lighting</span>
+                            <span className="text-white font-bold">
+                              {activeRoom?.environmental?.lightingStatus || "Unknown"}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Detected Objects</span>
+                            <span className="text-white font-bold">
+                              {displayDetections && displayDetections.length > 0
+                                ? displayDetections.map(d => `${d.label.charAt(0).toUpperCase() + d.label.slice(1)} (${Math.round(d.confidence * 100)}%)`).join(", ")
+                                : "No objects detected."}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Occupancy</span>
+                            <span className="text-white font-bold">{activeRoom?.occupancyStatus || "Empty"}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
-
+ 
                   {/* Space Information */}
                   <div className="bg-[#09090b] border border-zinc-900 rounded-xl p-6 flex flex-col gap-4">
                     <div className="border-b border-zinc-900 pb-2">
@@ -1180,6 +1337,58 @@ export default function Home() {
                       <div>
                         <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Floor Level</span>
                         <span className="text-white font-semibold">{activeRoom?.floorName || "Floor 1"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Environmental Intelligence */}
+                  <div className="bg-[#09090b] border border-zinc-900 rounded-xl p-6 flex flex-col gap-4">
+                    <div className="border-b border-zinc-900 pb-2 flex justify-between items-center">
+                      <span className="text-zinc-400 font-bold uppercase text-[10px] tracking-wider">Environmental Intelligence</span>
+                      <span className="text-[9px] text-zinc-500 font-mono font-medium">Real-Time Insights</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Brightness</span>
+                        <span className="text-white font-bold font-mono">
+                          {activeRoom?.environmental?.brightnessLevel ?? 0}%
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Lighting Status</span>
+                        <span className="text-white font-semibold">
+                          {activeRoom?.environmental?.lightingStatus || "Likely OFF"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Motion Activity</span>
+                        <span className="text-white font-semibold">
+                          {activeRoom?.environmental?.motionActivity || "None"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Fan Activity</span>
+                        <span className={`font-semibold ${activeRoom?.environmental?.fanActivity === "Detected" ? "text-emerald-400 font-bold" : "text-white"}`}>
+                          {activeRoom?.environmental?.fanActivity || "Not Detected"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Occupancy</span>
+                        <span className="text-white font-semibold">
+                          {activeRoom?.occupancyStatus || "Empty"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Energy Status</span>
+                        <span className={`font-bold ${
+                          activeRoom?.environmental?.energyEfficiencyState === "Potential Waste" 
+                            ? "text-rose-400" 
+                            : activeRoom?.environmental?.energyEfficiencyState === "Insufficient Lighting" 
+                              ? "text-amber-400" 
+                              : "text-emerald-400"
+                        }`}>
+                          {activeRoom?.environmental?.energyEfficiencyState || "Normal Operation"}
+                        </span>
                       </div>
                     </div>
                   </div>

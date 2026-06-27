@@ -63,9 +63,13 @@ const runAgentReasoning = (room) => {
   }
 
   // 2. ENERGY AGENT
+  const env = room.environmental || {};
+  const brightness = env.brightnessLevel !== undefined ? env.brightnessLevel : (deviceStates.lights ? 85 : 12);
+  const isOccupied = peopleCount > 0;
+  
   let energy = {
-    observation: "Smart grid active and optimal.",
-    evidence: `Utilities state: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}. ${evidenceStr}`,
+    observation: "Normal Operation",
+    evidence: `Brightness Level: ${brightness}%, Occupancy: ${isOccupied ? "Occupied" : "Empty"}, Utilities: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}.`,
     confidence: parseFloat((Math.max(90, occupancyConfidence) / 100).toFixed(2)),
     reasoning: "Active power grids align with verified occupant counts.",
     savingsEstimate: "₹0.00/hr",
@@ -74,20 +78,61 @@ const runAgentReasoning = (room) => {
     ruleTriggered: "None"
   };
 
-  if (energyRule) {
+  // Rule 1: Occupancy = Empty AND Brightness > 30% -> Potential Energy Waste
+  if (!isOccupied && brightness > 30) {
     let savedVal = 0;
     if (deviceStates.lights) savedVal += 220;
     if (deviceStates.fan) savedVal += 380;
+    if (savedVal === 0) savedVal = 220; // Default fallback
 
     energy = {
-      observation: energyRule.reasoning,
-      evidence: `Utilities state: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}. ${evidenceStr}`,
+      observation: "Potential Energy Waste",
+      evidence: `Brightness Level: ${brightness}%, Occupancy: Empty, Utilities: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}.`,
       confidence: parseFloat((occupancyConfidence / 100).toFixed(2)),
-      reasoning: `Rule [${energyRule.name}] triggered. Space usage deviates from efficiency guidelines.`,
+      reasoning: `Energy Wastage Anomaly: Room is empty but brightness level is high (${brightness}%) indicating active lighting.`,
       savingsEstimate: `₹${savedVal}.00/hr`,
-      decision: energyRule.decision,
-      recommendedAction: energyRule.action,
-      ruleTriggered: energyRule.name
+      decision: "ENERGY_WASTAGE_DETECTED",
+      recommendedAction: "TURN_OFF_LIGHTS",
+      ruleTriggered: "Energy Wastage Anomaly"
+    };
+  }
+  // Rule 2: Occupancy = Occupied AND Brightness Very Low (< 15%) -> Insufficient Lighting
+  else if (isOccupied && brightness < 15) {
+    energy = {
+      observation: "Insufficient Lighting",
+      evidence: `Brightness Level: ${brightness}%, Occupancy: Occupied, Utilities: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}.`,
+      confidence: parseFloat((occupancyConfidence / 100).toFixed(2)),
+      reasoning: `Insufficient Lighting Alert: Room is occupied but brightness level is very low (${brightness}%), suggesting lights should be ON.`,
+      savingsEstimate: "₹0.00/hr",
+      decision: "INSUFFICIENT_LIGHTING",
+      recommendedAction: "TURN_ON_LIGHTS",
+      ruleTriggered: "Insufficient Lighting Alert"
+    };
+  }
+  // Rule 3: Occupancy = Occupied AND Brightness Appropriate (>= 15%) -> Normal Operation
+  else if (isOccupied && brightness >= 15) {
+    energy = {
+      observation: "Normal Operation",
+      evidence: `Brightness Level: ${brightness}%, Occupancy: Occupied, Utilities: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}.`,
+      confidence: 0.98,
+      reasoning: `Room occupied with appropriate brightness level (${brightness}%).`,
+      savingsEstimate: "₹0.00/hr",
+      decision: "NOMINAL",
+      recommendedAction: "NONE",
+      ruleTriggered: "None"
+    };
+  }
+  // Case 4: Occupancy = Empty AND Brightness <= 30% -> Optimized
+  else {
+    energy = {
+      observation: "Normal Operation",
+      evidence: `Brightness Level: ${brightness}%, Occupancy: Empty, Utilities: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}.`,
+      confidence: 0.99,
+      reasoning: "Room empty and dark. Energy consumption is optimized.",
+      savingsEstimate: "₹0.00/hr",
+      decision: "OPTIMIZED",
+      recommendedAction: "NONE",
+      ruleTriggered: "None"
     };
   }
 

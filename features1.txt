@@ -1,0 +1,66 @@
+========================================================================
+                 SENTINELAI X — COMPREHENSIVE FEATURES & UPDATES
+========================================================================
+
+SentinelAI X is an Autonomous Physical AI Operations Platform. Below is
+the complete list of features currently implemented, followed by the specific
+upgrades and fixes completed in the latest iteration.
+
+------------------------------------------------------------------------
+PART 1: SYSTEM FEATURES
+------------------------------------------------------------------------
+
+1. EXECUTIVE AI COPILOT PORTAL
+   * Natural Language Interface: Chat assistant querying live state database.
+   * State Queries: Context-aware responses on security, energy, and safety.
+   * Operational Summary: Dynamic metrics including ROI, node counts, and alarms.
+
+2. MULTI-AGENT AI REASONING SYSTEM
+   * Four autonomous agents auditing spatial inputs:
+     - Security Agent: Detects unauthorized entry, restricted hour movement.
+     - Energy Agent: Spots resource waste and calculates monetary loss.
+     - Safety Agent: Monitors crowd densities and pathway hazards.
+     - Facility Agent: Tracks structural health and scheduling cycles.
+
+3. DIGITAL TWIN COMMAND CENTER
+   * Multi-Facility Hierarchy: Organized across five distinct campus blocks (Engineering Block, Library, Administration, Research Center, Hostel).
+   * Real-Time Indicators: Live occupant counts, risk scores, and status flags.
+
+4. CENTRALIZED ACTION ENGINE & ACTUATOR OVERRIDES
+   * Multi-state tracking (PENDING -> EXECUTING -> COMPLETED -> FAILED) for device commands.
+   * Controls for physical and simulated IoT actuators: Lights, Fans, Alarms, and Door Locks.
+
+5. INCIDENT MANAGEMENT SYSTEM
+   * Automated ticketing based on multi-agent compliance checks.
+   * Four severities (LOW, MEDIUM, HIGH, CRITICAL) with clickable, real-time resolution handlers.
+
+6. CHRONOLOGICAL EVENT TIMELINE & PREDICTIVE ANALYTICS
+   * Real-time audit logs of sensor telemetry, occupancy changes, and autonomous decisions.
+
+7. STRIPE / LINEAR STYLE ENTERPRISE UI
+   * Highly premium dark-mode aesthetics with Outlined minimal cards and responsive typography.
+
+------------------------------------------------------------------------
+PART 2: IMPLEMENTED CHANGES & PIPELINE REPAIRS
+------------------------------------------------------------------------
+
+1. PERCEPTION PIPELINE BUG FIX & INTEGRATION
+   * Live Webcam Feed Integration: Dynamic injection of TensorFlow.js and BlazeFace face detection in the frontend.
+   * Active Telemetry Hook: Bypassed expired external Afferens API limits by attaching detected frame objects (person label + confidence score) directly to the "/api/perceive" request payload.
+   * Instant State Reactivity: Updated the backend Environment State Manager (environmentState.service.js) to set the occupancy empty state cooldown threshold to 0 seconds, enabling immediate UI updates when people enter/leave the camera's sight.
+
+2. DASHBOARD RESHAPING & MINIMALISM
+   * Removed Distracting Metadata: Eliminated FPS counters, resolution details, estimated latency metrics, Edge Sampling states, and REC date indicators from the live camera view.
+   * Simplified Layout: Removed verbose AI developer/debug paragraphs, node labels, and dense blocks of text.
+   * Five-Step Story Flow Cards: Designed a row of 5 high-impact cards at the very top of the Overview page summarizing the platform narrative (1. Observation, 2. Understanding, 3. Decision, 4. Action, 5. Impact) dynamically using live room telemetry.
+
+3. CENTRALIZED PERCEPTION DEBUG CONSOLE
+   * Added a real-time Debug Console adjacent to the camera stream.
+   * Displays instant logs of:
+     - Last Ingestion Timestamp
+     - Last Detected Objects
+     - Last Inference Confidence Score
+     - Current Occupancy State
+     - Current Agent Decision Output
+     - Raw JSON response returned from the frame ingestion API.
+========================================================================

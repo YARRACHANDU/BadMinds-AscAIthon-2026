@@ -24,10 +24,193 @@ function loadScript(src: string): Promise<void> {
 }
 
 interface WebcamCaptureProps {
-  onFrameCapture?: (base64Image: string, objects: Array<{ label: string; confidence: number }>) => void;
+  onFrameCapture?: (
+    base64Image: string,
+    objects: Array<{ label: string; confidence: number }>,
+    environmental?: {
+      brightnessLevel: number;
+      illuminationScore: number;
+      motionActivity: string;
+      fanActivity: string;
+      lightingStatus: string;
+      lightingCondition: string;
+    }
+  ) => void;
   isProcessing?: boolean;
   intervalMs?: number; // Configurable sampling interval
 }
+
+// Analyze canvas pixels for brightness, histogram, motion, and localized fan activity
+const analyzeVideoFrame = (
+  video: HTMLVideoElement,
+  prevGrayscale: number[] | null
+): {
+  environmental: {
+    brightnessLevel: number;
+    illuminationScore: number;
+    motionActivity: string;
+    fanActivity: string;
+    lightingStatus: string;
+    lightingCondition: string;
+  };
+  currentGrayscale: number[];
+} => {
+  // Create an offscreen canvas for analysis
+  const canvas = document.createElement("canvas");
+  canvas.width = 32;
+  canvas.height = 24;
+  const ctx = canvas.getContext("2d");
+  
+  if (!ctx) {
+    return {
+      environmental: {
+        brightnessLevel: 50,
+        illuminationScore: 50,
+        motionActivity: "None",
+        fanActivity: "Not Detected",
+        lightingStatus: "Likely OFF",
+        lightingCondition: "Dark Room Detected"
+      },
+      currentGrayscale: []
+    };
+  }
+
+  try {
+    // Draw current video frame (resized to 32x24 for performance and noise reduction)
+    ctx.drawImage(video, 0, 0, 32, 24);
+    const imgData = ctx.getImageData(0, 0, 32, 24);
+    const data = imgData.data;
+
+    let totalBrightness = 0;
+    const currentGrayscale: number[] = [];
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+      totalBrightness += brightness;
+      currentGrayscale.push(Math.round(brightness));
+    }
+
+    const numPixels = 32 * 24;
+    const avgBrightnessRaw = totalBrightness / numPixels;
+    const brightnessLevel = Math.round((avgBrightnessRaw / 255) * 100);
+    const illuminationScore = brightnessLevel;
+
+    // Determine lighting status and condition
+    const lightingStatus = brightnessLevel >= 35 ? "Likely ON" : "Likely OFF";
+    let lightingCondition = "Dark Room Detected";
+    if (brightnessLevel >= 60) {
+      lightingCondition = "Bright Room Detected";
+    } else if (brightnessLevel >= 15) {
+      lightingCondition = "Dim Room Detected";
+    }
+
+    // Motion and Fan Analysis
+    let motionActivity = "None";
+    let fanActivity = "Not Detected";
+    let motionPercent = 0;
+
+    if (prevGrayscale && prevGrayscale.length === currentGrayscale.length) {
+      let movingPixels = 0;
+      const cellWidth = 4;
+      const cellHeight = 4;
+      const gridCols = 8;
+      const gridRows = 6;
+      
+      // Track motion in each cell
+      const cellMotion: boolean[] = new Array(gridCols * gridRows).fill(false);
+      const cellDiffs: number[] = new Array(gridCols * gridRows).fill(0);
+
+      for (let cy = 0; cy < gridRows; cy++) {
+        for (let cx = 0; cx < gridCols; cx++) {
+          let cellDiffSum = 0;
+          let cellMovingCount = 0;
+
+          for (let dy = 0; dy < cellHeight; dy++) {
+            for (let dx = 0; dx < cellWidth; dx++) {
+              const px = cx * cellWidth + dx;
+              const py = cy * cellHeight + dy;
+              const idx = py * 32 + px;
+              const diff = Math.abs(currentGrayscale[idx] - prevGrayscale[idx]);
+              
+              cellDiffSum += diff;
+              if (diff > 18) { // Noise threshold
+                movingPixels++;
+                cellMovingCount++;
+              }
+            }
+          }
+
+          const cellIdx = cy * gridCols + cx;
+          cellDiffs[cellIdx] = cellDiffSum / (cellWidth * cellHeight);
+          // If > 20% of pixels in this cell are moving, mark cell as moving
+          if (cellMovingCount > (cellWidth * cellHeight) * 0.20) {
+            cellMotion[cellIdx] = true;
+          }
+        }
+      }
+
+      motionPercent = (movingPixels / numPixels) * 100;
+      if (motionPercent > 18) {
+        motionActivity = "High";
+      } else if (motionPercent > 5) {
+        motionActivity = "Medium";
+      } else if (motionPercent > 0.5) {
+        motionActivity = "Low";
+      }
+
+      // Localized high-frequency motion in upper 60% of screen (rows 0 to 3)
+      let potentialFanCells = 0;
+      let otherMovingCells = 0;
+
+      for (let cy = 0; cy < gridRows; cy++) {
+        for (let cx = 0; cx < gridCols; cx++) {
+          const cellIdx = cy * gridCols + cx;
+          if (cellMotion[cellIdx]) {
+            if (cy <= 3 && cellDiffs[cellIdx] > 22) {
+              potentialFanCells++;
+            } else {
+              otherMovingCells++;
+            }
+          }
+        }
+      }
+
+      // Fan is characterized by localized upper motion (e.g. 1-3 cells moving)
+      // while the rest of the room doesn't have major motion.
+      if (potentialFanCells >= 1 && potentialFanCells <= 3 && otherMovingCells <= 4) {
+        fanActivity = "Detected";
+      }
+    }
+
+    return {
+      environmental: {
+        brightnessLevel,
+        illuminationScore,
+        motionActivity,
+        fanActivity,
+        lightingStatus,
+        lightingCondition
+      },
+      currentGrayscale
+    };
+  } catch (err) {
+    console.error("[WebcamCapture] Offscreen canvas analysis failure:", err);
+    return {
+      environmental: {
+        brightnessLevel: 50,
+        illuminationScore: 50,
+        motionActivity: "None",
+        fanActivity: "Not Detected",
+        lightingStatus: "Likely OFF",
+        lightingCondition: "Dark Room Detected"
+      },
+      currentGrayscale: []
+    };
+  }
+};
 
 export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs = 2000 }: WebcamCaptureProps) {
   const { videoRef, isActive, error, startStream, stopStream, captureFrame } = useWebcam({
@@ -35,24 +218,32 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
     height: 480,
   });
 
-  const [model, setModel] = useState<any>(null);
+  const [blazeModel, setBlazeModel] = useState<any>(null);
+  const [cocoModel, setCocoModel] = useState<any>(null);
   const [isModelLoading, setIsModelLoading] = useState<boolean>(true);
+  const prevGrayscaleRef = useRef<number[] | null>(null);
 
-  // Load TensorFlow.js and BlazeFace model
+  // Load TensorFlow.js, BlazeFace, and COCO-SSD models
   useEffect(() => {
     let isMounted = true;
     async function initAI() {
       try {
         await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs");
         await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface");
+        await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd");
+        
         if (isMounted) {
-          const loadedModel = await (window as any).blazeface.load();
-          setModel(loadedModel);
+          console.log("[WebcamCapture] TensorFlow scripts loaded. Loading models...");
+          const loadedBlaze = await (window as any).blazeface.load();
+          const loadedCoco = await (window as any).cocoSsd.load();
+          
+          setBlazeModel(loadedBlaze);
+          setCocoModel(loadedCoco);
           setIsModelLoading(false);
-          console.log("[WebcamCapture] BlazeFace model loaded successfully.");
+          console.log("[WebcamCapture] BlazeFace and COCO-SSD models loaded successfully.");
         }
       } catch (err) {
-        console.error("[WebcamCapture] Failed to load detection model:", err);
+        console.error("[WebcamCapture] Failed to load detection models:", err);
       }
     }
     initAI();
@@ -95,6 +286,7 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
+      prevGrayscaleRef.current = null;
     };
   }, [startStream, stopStream]);
 
@@ -110,20 +302,68 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
         const frame = captureFrame();
         if (frame) {
           let detectedObjects: Array<{ label: string; confidence: number }> = [];
-          if (model && videoRef.current) {
+          let environmentalData = undefined;
+
+          if (videoRef.current) {
             try {
-              const predictions = await model.estimateFaces(videoRef.current, false);
-              if (predictions && predictions.length > 0) {
-                detectedObjects = predictions.map((pred: any) => ({
-                  label: "person",
-                  confidence: pred.probability ? pred.probability[0] : 0.95,
-                }));
+              // 1. Run BlazeFace (Face detection -> Person presence)
+              let faceDetections: Array<{ label: string; confidence: number }> = [];
+              if (blazeModel) {
+                const predictions = await blazeModel.estimateFaces(videoRef.current, false);
+                if (predictions && predictions.length > 0) {
+                  faceDetections = predictions.map((pred: any) => ({
+                    label: "person",
+                    confidence: pred.probability ? pred.probability[0] : 0.95,
+                  }));
+                }
               }
+
+              // 2. Run COCO-SSD (Multi-object detection)
+              let objectDetections: Array<{ label: string; confidence: number }> = [];
+              if (cocoModel) {
+                const predictions = await cocoModel.detect(videoRef.current);
+                if (predictions && predictions.length > 0) {
+                  objectDetections = predictions.map((pred: any) => ({
+                    label: pred.class,
+                    confidence: pred.score,
+                  }));
+                }
+              }
+
+              // 3. Merge detections in a unified map
+              const mergedMap = new Map<string, number>();
+
+              // Add face detections
+              faceDetections.forEach(det => {
+                const existing = mergedMap.get(det.label) || 0;
+                if (det.confidence > existing) {
+                  mergedMap.set(det.label, det.confidence);
+                }
+              });
+
+              // Add coco detections
+              objectDetections.forEach(det => {
+                const existing = mergedMap.get(det.label) || 0;
+                if (det.confidence > existing) {
+                  mergedMap.set(det.label, det.confidence);
+                }
+              });
+
+              // Convert back to array
+              mergedMap.forEach((conf, label) => {
+                detectedObjects.push({ label, confidence: conf });
+              });
+
+              // 4. Run Offscreen Video Pixel Analysis
+              const analysis = analyzeVideoFrame(videoRef.current, prevGrayscaleRef.current);
+              prevGrayscaleRef.current = analysis.currentGrayscale;
+              environmentalData = analysis.environmental;
+
             } catch (err) {
-              console.error("[WebcamCapture] Face estimation error:", err);
+              console.error("[WebcamCapture] Object/face/pixel estimation error:", err);
             }
           }
-          onFrameCapture(frame, detectedObjects);
+          onFrameCapture(frame, detectedObjects, environmentalData);
         }
       }, intervalMs);
     } else {
@@ -131,6 +371,7 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      prevGrayscaleRef.current = null;
     }
 
     return () => {
@@ -138,17 +379,31 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
         clearInterval(intervalRef.current);
       }
     };
-  }, [isActive, onFrameCapture, captureFrame, intervalMs, model]);
+  }, [isActive, onFrameCapture, captureFrame, intervalMs, blazeModel, cocoModel]);
 
   return (
     <div ref={containerRef} className="relative flex flex-col w-full h-full overflow-hidden border rounded-2xl bg-zinc-950 border-zinc-800/80 backdrop-blur-xl">
       {/* High-tech overlay header */}
       <div className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800/50">
-        <div className="flex items-center gap-2">
-          <span className={`w-2.5 h-2.5 rounded-full ${isActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"}`} />
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-            {isActive ? "LIVE FEED" : "FEED OFFLINE"}
-          </span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${isActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"}`} />
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              {isActive ? "LIVE FEED" : "FEED OFFLINE"}
+            </span>
+          </div>
+          {isActive && (
+            <div className="hidden lg:flex items-center gap-3 text-[9px] font-mono text-zinc-500">
+              <span className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${blazeModel ? "bg-emerald-500" : "bg-zinc-600 animate-pulse"}`} />
+                BlazeFace: {blazeModel ? "ACTIVE" : "LOADING"}
+              </span>
+              <span className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${cocoModel ? "bg-emerald-500" : "bg-zinc-600 animate-pulse"}`} />
+                COCO-SSD: {cocoModel ? "ACTIVE" : "LOADING"}
+              </span>
+            </div>
+          )}
         </div>
         <button
           onClick={isActive ? stopStream : startStream}

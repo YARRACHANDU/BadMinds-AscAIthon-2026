@@ -9,6 +9,7 @@ const aiAgent = require("./aiAgent.service");
 const incidentService = require("./incident.service");
 const actionEngine = require("./actionEngine.service");
 const eventTimeline = require("./eventTimeline.service");
+const environmentalPerception = require("./environmentalPerception.service");
 
 // Helper to determine risk level from agent outputs
 const calcRiskLevel = (agents) => {
@@ -394,6 +395,47 @@ const updateEnvironmentState = async (roomId, perceptionData, cameraId) => {
     space.occupancyStatusDetailed = occupancyStatusDetailed;
     space.lastUpdated = new Date();
 
+    // Calculate environmental parameters
+    const hasSmoke = uniqueLabels.includes("smoke") || uniqueLabels.includes("fire");
+    const hasLeak = uniqueLabels.includes("water") || uniqueLabels.includes("leak");
+    const hasObstacle = uniqueLabels.some(obj => ["obstacle", "box", "debris", "pallet"].includes(obj.toLowerCase()));
+
+    const occupantHeat = newPeopleCount * 0.4;
+    const stableBase = (parseInt(space._id.toString().slice(-4), 16) % 40) / 10;
+    const currentTemp = parseFloat((20.5 + stableBase + occupantHeat).toFixed(1));
+    const currentHumidity = Math.max(30, Math.min(80, 50 - newPeopleCount * 2));
+    const currentAqi = Math.max(10, Math.min(250, 30 + newPeopleCount * 12));
+    const currentNoise = newPeopleCount > 0 ? (newPeopleCount > 5 ? 72 : 54) : 38;
+
+    // Run new Environmental Perception Engine
+    const envResult = environmentalPerception.analyzeFrame(
+      space._id.toString(),
+      perceptionData.image,
+      space,
+      perceptionData.environmental
+    );
+
+    space.environmental = {
+      temperature: currentTemp,
+      humidity: currentHumidity,
+      airQuality: currentAqi,
+      noiseLevel: currentNoise,
+      lightingCondition: envResult.lightingCondition, // "Bright Room Detected", etc.
+      smokeDetected: hasSmoke,
+      waterLeakage: hasLeak,
+      blockedExits: hasObstacle,
+      visibilityCondition: hasSmoke ? "Smoky" : "Clear",
+
+      // New properties
+      brightnessLevel: envResult.brightnessLevel,
+      illuminationScore: envResult.illuminationScore,
+      motionActivity: envResult.motionActivity,
+      fanActivity: envResult.fanActivity,
+      lightingStatus: envResult.lightingStatus,
+      roomState: envResult.roomState,
+      energyEfficiencyState: envResult.energyEfficiencyState
+    };
+
     // 5. RUN MULTI-AGENT REASONING WITH TEMPORAL DATA & EVIDENCE
     const tempInput = {
       roomId: space._id.toString(),
@@ -405,7 +447,8 @@ const updateEnvironmentState = async (roomId, perceptionData, cameraId) => {
       occupancyConfidence: occupancyConfidence,
       temporalHistory: history,
       roomEmptySince: space.roomEmptySince,
-      roomOccupiedSince: space.roomOccupiedSince
+      roomOccupiedSince: space.roomOccupiedSince,
+      environmental: space.environmental
     };
 
     space.agents = aiAgent.runAgentReasoning(tempInput);
@@ -419,6 +462,9 @@ const updateEnvironmentState = async (roomId, perceptionData, cameraId) => {
     if (!space.trustMetrics) {
       space.trustMetrics = { truePositives: 24, falsePositives: 0, falseNegatives: 0, decisionAccuracy: 100 };
     }
+    
+    // Define emptyDurationMs to fix the ReferenceError
+    const emptyDurationMs = emptyDurationSec * 1000;
     
     // Simulate real trust feedback: if agents make correct decisions based on telemetry & peopleCount, add truePositives
     if (space.riskLevel === "LOW" && newPeopleCount === 0 && !space.deviceStates.lights) {
@@ -440,31 +486,6 @@ const updateEnvironmentState = async (roomId, perceptionData, cameraId) => {
     } else {
       space.statusSummary = "Optimal";
     }
-
-    // Dynamic environmental & asset classification update
-    const hasSmoke = uniqueLabels.includes("smoke") || uniqueLabels.includes("fire");
-    const hasLeak = uniqueLabels.includes("water") || uniqueLabels.includes("leak");
-    const hasObstacle = uniqueLabels.some(obj => ["obstacle", "box", "debris", "pallet"].includes(obj.toLowerCase()));
-
-    const occupantHeat = newPeopleCount * 0.4;
-    const stableBase = (parseInt(space._id.toString().slice(-4), 16) % 40) / 10;
-    const currentTemp = parseFloat((20.5 + stableBase + occupantHeat).toFixed(1));
-    const currentHumidity = Math.max(30, Math.min(80, 50 - newPeopleCount * 2));
-    const currentAqi = Math.max(10, Math.min(250, 30 + newPeopleCount * 12));
-    const currentNoise = newPeopleCount > 0 ? (newPeopleCount > 5 ? 72 : 54) : 38;
-    const currentLight = space.deviceStates.lights ? "Bright" : "Dim";
-
-    space.environmental = {
-      temperature: currentTemp,
-      humidity: currentHumidity,
-      airQuality: currentAqi,
-      noiseLevel: currentNoise,
-      lightingCondition: currentLight,
-      smokeDetected: hasSmoke,
-      waterLeakage: hasLeak,
-      blockedExits: hasObstacle,
-      visibilityCondition: hasSmoke ? "Smoky" : "Clear"
-    };
 
     let crowdingState = "Normal";
     if (newPeopleCount > 8) {
@@ -510,9 +531,12 @@ const updateEnvironmentState = async (roomId, perceptionData, cameraId) => {
     // Actuation & Ticket Routing Orchestration
     await orchestrateDecisions(space);
 
+    const spaceObj = space.toObject ? space.toObject() : space;
+    spaceObj.detectedObjects = uniqueLabels;
+
     return {
       roomId: space._id.toString(),
-      updated: space
+      updated: spaceObj
     };
   } catch (error) {
     console.error("Failed to update environment state:", error);

@@ -82,7 +82,7 @@ const perceiveFrame = async (req, res) => {
         
         const esmResult = await ESM.updateEnvironmentState(
             targetRoomId,
-            { objects },
+            { objects, image, environmental: req.body.environmental },
             req.body.cameraId || targetRoomId
         );
 

@@ -61,6 +61,13 @@ export interface EnvironmentalState {
   waterLeakage: boolean;
   blockedExits: boolean;
   visibilityCondition: string;
+  brightnessLevel?: number;
+  illuminationScore?: number;
+  motionActivity?: string;
+  fanActivity?: string;
+  energyEfficiencyState?: string;
+  lightingStatus?: string;
+  roomState?: string;
 }
 
 export interface PeopleAsset {
