@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const connectDB = require("./services/db");
+const seedDatabase = require("./services/seeder.service");
 const perceptionRoutes = require("./routes/perception");
 const roomsRoutes = require("./routes/rooms");
 const operationsRoutes = require("./routes/operations");
@@ -20,6 +22,14 @@ app.use("/api", perceptionRoutes);
 app.use("/api", operationsRoutes);
 app.use("/api/rooms", roomsRoutes);
 
-app.listen(PORT, () => {
+// Start Database & Express Server
+const startServer = async () => {
+  await connectDB();
+  await seedDatabase();
+  
+  app.listen(PORT, () => {
     console.log(`http://localhost:${PORT}`);
-});
+  });
+};
+
+startServer();

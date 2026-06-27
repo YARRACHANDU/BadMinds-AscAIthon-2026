@@ -16,9 +16,9 @@ const copilotService = require("../services/copilot.service");
  * GET /api/metrics
  * Returns global operational & ROI metrics for the campus dashboard
  */
-router.get("/metrics", (req, res) => {
+router.get("/metrics", async (req, res) => {
   try {
-    const metrics = ESM.getMetrics();
+    const metrics = await ESM.getMetrics();
     res.json({ success: true, metrics });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -29,9 +29,9 @@ router.get("/metrics", (req, res) => {
  * GET /api/actions
  * Returns the history of executed and pending actuator actions
  */
-router.get("/actions", (req, res) => {
+router.get("/actions", async (req, res) => {
   try {
-    const actions = actionEngine.getActionsHistory();
+    const actions = await actionEngine.getActionsHistory();
     res.json({ success: true, count: actions.length, actions });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -42,9 +42,9 @@ router.get("/actions", (req, res) => {
  * GET /api/incidents
  * Returns historical and active incidents
  */
-router.get("/incidents", (req, res) => {
+router.get("/incidents", async (req, res) => {
   try {
-    const incidents = incidentService.getIncidents();
+    const incidents = await incidentService.getIncidents();
     res.json({ success: true, count: incidents.length, incidents });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -55,9 +55,9 @@ router.get("/incidents", (req, res) => {
  * POST /api/incidents/:incidentId/resolve
  * Manually resolves an active incident
  */
-router.post("/incidents/:incidentId/resolve", (req, res) => {
+router.post("/incidents/:incidentId/resolve", async (req, res) => {
   try {
-    const resolved = incidentService.resolveIncident(req.params.incidentId);
+    const resolved = await incidentService.resolveIncident(req.params.incidentId);
     if (!resolved) {
       return res.status(404).json({ error: "Incident not found or already resolved." });
     }
@@ -74,7 +74,7 @@ router.post("/incidents/:incidentId/resolve", (req, res) => {
 router.get("/insights", async (req, res) => {
   try {
     const roomsList = await ESM.getAllRooms();
-    const incidentsList = incidentService.getIncidents();
+    const incidentsList = await incidentService.getIncidents();
     const insights = predictiveService.generateInsights(roomsList, incidentsList);
     res.json({ success: true, insights });
   } catch (err) {
@@ -86,9 +86,9 @@ router.get("/insights", async (req, res) => {
  * GET /api/timeline
  * Returns event timeline logs
  */
-router.get("/timeline", (req, res) => {
+router.get("/timeline", async (req, res) => {
   try {
-    const events = eventTimeline.getEvents();
+    const events = await eventTimeline.getEvents();
     res.json({ success: true, count: events.length, events });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -113,7 +113,7 @@ router.post("/rooms/:roomId/device", async (req, res) => {
     }
 
     // Log manual override
-    eventTimeline.addEvent(
+    await eventTimeline.addEvent(
       req.params.roomId,
       "action",
       `Manual Override: Switched ${device.toUpperCase()} to ${state ? "ON" : "OFF"}`
@@ -137,6 +137,151 @@ router.post("/copilot/chat", async (req, res) => {
     }
     const response = await copilotService.generateCopilotResponse(message);
     res.json({ success: true, response });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// DYNAMIC ORGANIZATION MANAGEMENT API ROUTES
+// ==========================================
+
+const { Organization, Building, Floor, Space, Device, User, Role } = require("../models/schemas");
+
+// Buildings Endpoint
+router.get("/buildings", async (req, res) => {
+  try {
+    const list = await Building.find().lean();
+    res.json({ success: true, buildings: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/buildings", async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: "Building name required" });
+    
+    // Find or create default organization
+    let org = await Organization.findOne();
+    if (!org) {
+      org = await Organization.create({ name: "Centennial University Campus", type: "University" });
+    }
+
+    const b = await Building.create({ name, organizationId: org._id });
+    res.json({ success: true, building: b });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Floors Endpoint
+router.get("/floors", async (req, res) => {
+  try {
+    const list = await Floor.find().populate("buildingId").lean();
+    res.json({ success: true, floors: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/floors", async (req, res) => {
+  try {
+    const { name, buildingId } = req.body;
+    if (!name || !buildingId) return res.status(400).json({ error: "Name and buildingId required" });
+
+    const b = await Building.findById(buildingId);
+    if (!b) return res.status(404).json({ error: "Building not found" });
+
+    const f = await Floor.create({ name, buildingId, organizationId: b.organizationId });
+    res.json({ success: true, floor: f });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Users/Owners Endpoint
+router.get("/users", async (req, res) => {
+  try {
+    const list = await User.find().lean();
+    res.json({ success: true, users: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/users", async (req, res) => {
+  try {
+    const { name, email, role } = req.body;
+    if (!name || !email || !role) return res.status(400).json({ error: "Name, email, and role required" });
+
+    let org = await Organization.findOne();
+    if (!org) {
+      org = await Organization.create({ name: "Centennial University Campus", type: "University" });
+    }
+
+    const u = await User.create({ name, email, role, organizationId: org._id });
+    res.json({ success: true, user: u });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Spaces Endpoint
+router.post("/spaces", async (req, res) => {
+  try {
+    const { name, spaceType, floorId, buildingId, primaryOwner, secondaryOwner, escalationOwner, emergencyOwner } = req.body;
+    if (!name || !spaceType || !floorId || !buildingId) {
+      return res.status(400).json({ error: "name, spaceType, floorId, and buildingId required" });
+    }
+
+    const b = await Building.findById(buildingId);
+    if (!b) return res.status(404).json({ error: "Building not found" });
+
+    const s = await Space.create({
+      name,
+      spaceType,
+      floorId,
+      buildingId,
+      organizationId: b.organizationId,
+      owners: {
+        primary: primaryOwner || null,
+        secondary: secondaryOwner || null,
+        escalation: escalationOwner || null,
+        emergency: emergencyOwner || null
+      },
+      deviceStates: { lights: true, fan: true, alarm: false, doorLocked: false }
+    });
+
+    res.json({ success: true, space: s });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Devices Endpoint
+router.post("/devices", async (req, res) => {
+  try {
+    const { name, type, spaceId } = req.body;
+    if (!name || !type || !spaceId) {
+      return res.status(400).json({ error: "name, type, and spaceId required" });
+    }
+
+    const space = await Space.findById(spaceId);
+    if (!space) return res.status(404).json({ error: "Space not found" });
+
+    const dev = await Device.create({
+      name,
+      type,
+      spaceId,
+      floorId: space.floorId,
+      buildingId: space.buildingId,
+      organizationId: space.organizationId,
+      ownerId: space.owners.primary || null
+    });
+
+    res.json({ success: true, device: dev });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

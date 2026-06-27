@@ -4,6 +4,8 @@ export interface AgentOutput {
   confidence: number;
   decision: string;
   recommendedAction: string;
+  ruleTriggered?: string;
+  evidence?: string;
 }
 
 export interface EnergyAgentOutput {
@@ -12,6 +14,8 @@ export interface EnergyAgentOutput {
   savingsEstimate: string;
   decision: string;
   recommendedAction: string;
+  ruleTriggered?: string;
+  evidence?: string;
 }
 
 export interface SafetyAgentOutput {
@@ -20,7 +24,11 @@ export interface SafetyAgentOutput {
   reasoning: string;
   decision: string;
   action: string;
+  recommendedAction?: string;
+  ruleTriggered?: string;
+  evidence?: string;
 }
+
 
 export interface FacilityAgentOutput {
   observation: string;
@@ -43,6 +51,56 @@ export interface DeviceStates {
   doorLocked: boolean;
 }
 
+export interface EnvironmentalState {
+  temperature: number;
+  humidity: number;
+  airQuality: number;
+  noiseLevel: number;
+  lightingCondition: string;
+  smokeDetected: boolean;
+  waterLeakage: boolean;
+  blockedExits: boolean;
+  visibilityCondition: string;
+}
+
+export interface PeopleAsset {
+  count: number;
+  crowdingState: string;
+  movementPatterns: string;
+  presenceDurationMin: number;
+}
+
+export interface SafetyAsset {
+  type: string;
+  status: string;
+}
+
+export interface InfrastructureAsset {
+  type: string;
+  doorsCount: number;
+  windowsCount: number;
+  exitsCount: number;
+}
+
+export interface UniversalAssetModel {
+  people: PeopleAsset;
+  safetyAssets: SafetyAsset[];
+  infrastructure: InfrastructureAsset;
+}
+
+export interface OwnerDetails {
+  name: string;
+  email: string;
+  role: string;
+}
+
+export interface Owners {
+  primary?: OwnerDetails | null;
+  secondary?: OwnerDetails | null;
+  escalation?: OwnerDetails | null;
+  emergency?: OwnerDetails | null;
+}
+
 export interface RoomState {
   roomId: string;
   roomName: string;
@@ -59,6 +117,19 @@ export interface RoomState {
   agents: AgentsState;
   riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   statusSummary: string;
+  environmental?: EnvironmentalState;
+  assets?: UniversalAssetModel;
+  owners?: Owners | null;
+  floorName?: string;
+  buildingId?: string | null;
+  floorId?: string | null;
+  occupancyConfidence?: number;
+  temporalHistory?: Array<{
+    timestamp: string;
+    peopleCount: number;
+    detectedObjects: string[];
+    frameConfidence: number;
+  }>;
 }
 
 export interface OperationalMetrics {
@@ -92,6 +163,14 @@ export interface ActionItem {
   status: "pending" | "executing" | "completed" | "failed";
   timestamp: string;
   details: string;
+  agentResponsible?: string;
+  reasoning?: string;
+  impact?: string;
+  confidence?: number;
+  evidenceUsed?: string;
+  expectedImpact?: string;
+  sourceIncidentId?: string;
+  sourceIncidentTitle?: string;
 }
 
 export interface IncidentItem {
@@ -103,6 +182,16 @@ export interface IncidentItem {
   status: "active" | "resolved";
   timestamp: string;
   resolvedAt: string | null;
+  escalationLevel?: number;
+  recommendedAction?: string;
+  evidence?: {
+    detectedObjects: string[];
+    detectionConfidence: number;
+    frameCount: string;
+    occupancyConfidence: number;
+    sourceCamera: string;
+    sourceRoom: string;
+  };
 }
 
 export interface TimelineEvent {

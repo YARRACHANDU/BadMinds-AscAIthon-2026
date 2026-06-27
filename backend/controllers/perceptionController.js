@@ -67,17 +67,10 @@ const perceiveFrame = async (req, res) => {
         const latestEvent = perceptionData?.data?.[0];
         let objects = [];
 
-        if (latestEvent?.data?.objects) {
+        if (req.body.objects && Array.isArray(req.body.objects)) {
+            objects = req.body.objects;
+        } else if (latestEvent?.data?.objects) {
             objects = latestEvent.data.objects;
-        } else {
-            // Fallback: Simulate detections when Afferens is unavailable
-            const randVal = Math.random();
-            if (randVal > 0.5) {
-                objects.push({ label: "person", confidence: 0.88 });
-                if (randVal > 0.9) {
-                    objects.push({ label: "unidentified object", confidence: 0.76 });
-                }
-            }
         }
 
         // 4. Feed raw perception objects into the Environment State Manager

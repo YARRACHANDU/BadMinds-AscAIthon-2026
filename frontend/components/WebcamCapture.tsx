@@ -3,8 +3,28 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useWebcam } from "../hooks/useWebcam";
 
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") {
+      resolve();
+      return;
+    }
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = (e) => reject(new Error(`Failed to load script: ${src}`));
+    document.body.appendChild(script);
+  });
+}
+
 interface WebcamCaptureProps {
-  onFrameCapture?: (base64Image: string) => void;
+  onFrameCapture?: (base64Image: string, objects: Array<{ label: string; confidence: number }>) => void;
   isProcessing?: boolean;
   intervalMs?: number; // Configurable sampling interval
 }
@@ -15,7 +35,33 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
     height: 480,
   });
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [model, setModel] = useState<any>(null);
+  const [isModelLoading, setIsModelLoading] = useState<boolean>(true);
+
+  // Load TensorFlow.js and BlazeFace model
+  useEffect(() => {
+    let isMounted = true;
+    async function initAI() {
+      try {
+        await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs");
+        await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface");
+        if (isMounted) {
+          const loadedModel = await (window as any).blazeface.load();
+          setModel(loadedModel);
+          setIsModelLoading(false);
+          console.log("[WebcamCapture] BlazeFace model loaded successfully.");
+        }
+      } catch (err) {
+        console.error("[WebcamCapture] Failed to load detection model:", err);
+      }
+    }
+    initAI();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const intervalRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -60,10 +106,24 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
         clearInterval(intervalRef.current);
       }
       
-      intervalRef.current = setInterval(() => {
+      intervalRef.current = setInterval(async () => {
         const frame = captureFrame();
         if (frame) {
-          onFrameCapture(frame);
+          let detectedObjects: Array<{ label: string; confidence: number }> = [];
+          if (model && videoRef.current) {
+            try {
+              const predictions = await model.estimateFaces(videoRef.current, false);
+              if (predictions && predictions.length > 0) {
+                detectedObjects = predictions.map((pred: any) => ({
+                  label: "person",
+                  confidence: pred.probability ? pred.probability[0] : 0.95,
+                }));
+              }
+            } catch (err) {
+              console.error("[WebcamCapture] Face estimation error:", err);
+            }
+          }
+          onFrameCapture(frame, detectedObjects);
         }
       }, intervalMs);
     } else {
@@ -78,7 +138,7 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
         clearInterval(intervalRef.current);
       }
     };
-  }, [isActive, onFrameCapture, captureFrame, intervalMs]);
+  }, [isActive, onFrameCapture, captureFrame, intervalMs, model]);
 
   return (
     <div ref={containerRef} className="relative flex flex-col w-full h-full overflow-hidden border rounded-2xl bg-zinc-950 border-zinc-800/80 backdrop-blur-xl">
@@ -87,7 +147,7 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
         <div className="flex items-center gap-2">
           <span className={`w-2.5 h-2.5 rounded-full ${isActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"}`} />
           <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-            {isActive ? "LIVE FEED: NODE_01" : "FEED OFFLINE"}
+            {isActive ? "LIVE FEED" : "FEED OFFLINE"}
           </span>
         </div>
         <button
@@ -146,11 +206,7 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
               <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-zinc-400/60" />
 
               {/* Status information */}
-              <div className="flex items-start justify-between w-full">
-                <div className="flex flex-col bg-zinc-950/80 px-2 py-1 rounded border border-zinc-800/80 text-[10px] font-mono text-zinc-400">
-                  <span>RES: 640x480</span>
-                  <span>FPS: 30.00</span>
-                </div>
+              <div className="flex items-start justify-end w-full">
                 {/* Fullscreen Button */}
                 <button
                   onClick={toggleFullscreen}
@@ -161,10 +217,6 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9m5.25 11.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
                   </svg>
                 </button>
-                <div className="flex flex-col bg-zinc-950/80 px-2 py-1 rounded border border-zinc-800/80 text-[10px] font-mono text-zinc-400 text-right">
-                  <span>LATENCY: ~150ms</span>
-                  <span>EDGE_SAMPLING: ACTIVE</span>
-                </div>
               </div>
 
               {/* Bounding box mock indicator for visual aesthetics */}
@@ -176,10 +228,7 @@ export function WebcamCapture({ onFrameCapture, isProcessing = false, intervalMs
                 </div>
               )}
 
-              <div className="flex items-end justify-between w-full">
-                <div className="text-[10px] font-mono text-zinc-500 bg-zinc-950/80 px-2 py-0.5 rounded border border-zinc-800/40">
-                  REC // {new Date().toISOString().split("T")[0]}
-                </div>
+              <div className="flex items-end justify-end w-full">
                 {isProcessing && (
                   <div className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2.5 py-0.5 rounded animate-pulse">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />

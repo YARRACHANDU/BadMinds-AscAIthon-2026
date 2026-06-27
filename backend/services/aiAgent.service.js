@@ -1,7 +1,10 @@
 /**
  * SentinelAI X — Enterprise Multi-Agent Intelligence Service
  * Responsibility: Models specialized AI agents targeting Security, Energy, Safety, and Facilities.
+ * Implements evidence-based reasoning containing observation, evidence, confidence, reasoning, decision, and action.
  */
+
+const ruleEngine = require("./ruleEngine.service");
 
 /**
  * Run multi-agent reasoning on a room's state.
@@ -9,138 +12,149 @@
  * @returns {Object} Target outputs for all four agents.
  */
 const runAgentReasoning = (room) => {
-  const { roomId, roomName, peopleCount, detectedObjects, deviceStates } = room;
-  const isServerRoom = roomId.includes("RES") || roomName?.toLowerCase().includes("server") || roomName?.toLowerCase().includes("lab");
+  const {
+    roomId,
+    roomName,
+    peopleCount,
+    detectedObjects = [],
+    deviceStates = {},
+    occupancyStatusDetailed = "Empty",
+    occupancyConfidence = 100,
+    temporalHistory = [],
+    roomEmptySince = null,
+    roomOccupiedSince = null
+  } = room;
+
+  // Evaluate the rules using our new rule engine
+  const triggeredRules = ruleEngine.evaluateRules(room, detectedObjects);
+
+  // Helper to compile temporal evidence string
+  const lastNFrames = temporalHistory.slice(-20);
+  const consecutiveFrames = lastNFrames.length;
+  const framesWithPeople = lastNFrames.filter(f => f.peopleCount > 0).length;
+  const evidenceStr = `${framesWithPeople}/${consecutiveFrames} consecutive frames with people. Occupancy confidence: ${occupancyConfidence}%.`;
+
+  // Find rules triggered for each agent
+  const securityRule = triggeredRules.find(r => r.agent === "security");
+  const energyRule = triggeredRules.find(r => r.agent === "energy");
+  const safetyRule = triggeredRules.find(r => r.agent === "safety");
 
   // 1. SECURITY AGENT
   let security = {
     observation: "All perimeters clear.",
-    reasoning: "Visual scans show zero unauthorized entries or threat profiles in the vicinity.",
-    confidence: 0.96,
+    evidence: evidenceStr,
+    confidence: parseFloat((occupancyConfidence / 100).toFixed(2)),
+    reasoning: "Visual and temporal scans confirm zero unauthorized entries or threat profiles.",
     decision: "SECURE",
-    recommendedAction: "CONTINUE_MONITORING"
+    recommendedAction: "CONTINUE_MONITORING",
+    ruleTriggered: "None"
   };
 
-  if (peopleCount > 0 && isServerRoom && !deviceStates.lights) {
+  if (securityRule) {
     security = {
-      observation: "Unlit human activity in secure server/lab cluster.",
-      reasoning: "Motion signature detected in dark high-security zone. Unlocks unauthorized entrance hazard profiling.",
+      observation: securityRule.reasoning,
+      evidence: `${peopleCount} person(s) detected. ${evidenceStr}`,
       confidence: 0.98,
-      decision: "UNAUTHORIZED_ACCESS_RISK",
-      recommendedAction: "LOCK_DOOR"
-    };
-  } else if (detectedObjects.includes("unidentified object") || detectedObjects.includes("intruder")) {
-    security = {
-      observation: "Unverified entity detected within zone boundary.",
-      reasoning: "Target matches anomaly profiles. Ingress/egress mapping indicates unregistered entity entrance.",
-      confidence: 0.91,
-      decision: "INTRUSION_ALERT",
-      recommendedAction: "ACTIVATE_ALARM"
-    };
-  } else if (peopleCount > 0 && deviceStates.alarm) {
-    security = {
-      observation: "Human presence detected with security system ARMED.",
-      reasoning: "Secure boundary intrusion event triggered by thermal and vision sensor overlap.",
-      confidence: 0.99,
-      decision: "INTRUSION_ALERT",
-      recommendedAction: "ACTIVATE_ALARM"
+      reasoning: `Rule [${securityRule.name}] triggered. Ingress/egress mapping indicates unauthorized activity.`,
+      decision: securityRule.decision,
+      recommendedAction: securityRule.action,
+      ruleTriggered: securityRule.name
     };
   }
 
   // 2. ENERGY AGENT
   let energy = {
     observation: "Smart grid active and optimal.",
+    evidence: `Utilities state: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}. ${evidenceStr}`,
+    confidence: parseFloat((Math.max(90, occupancyConfidence) / 100).toFixed(2)),
     reasoning: "Active power grids align with verified occupant counts.",
     savingsEstimate: "₹0.00/hr",
     decision: "OPTIMIZED",
-    recommendedAction: "NONE"
+    recommendedAction: "NONE",
+    ruleTriggered: "None"
   };
 
-  const lightsOn = deviceStates?.lights ?? true;
-  const fanOn = deviceStates?.fan ?? true;
-
-  if (peopleCount === 0 && (lightsOn || fanOn)) {
-    const devices = [];
+  if (energyRule) {
     let savedVal = 0;
-    if (lightsOn) {
-      devices.push("lighting");
-      savedVal += 220; // estimate ₹220/hr
-    }
-    if (fanOn) {
-      devices.push("HVAC grids");
-      savedVal += 380; // estimate ₹380/hr
-    }
+    if (deviceStates.lights) savedVal += 220;
+    if (deviceStates.fan) savedVal += 380;
 
     energy = {
-      observation: `Active ${devices.join(" and ")} in empty zone.`,
-      reasoning: "Space is completely unoccupied but utilities remain powered. Violates corporate carbon-neutral protocol.",
+      observation: energyRule.reasoning,
+      evidence: `Utilities state: Lights=${deviceStates.lights ? "ON" : "OFF"}, Fan=${deviceStates.fan ? "ON" : "OFF"}. ${evidenceStr}`,
+      confidence: parseFloat((occupancyConfidence / 100).toFixed(2)),
+      reasoning: `Rule [${energyRule.name}] triggered. Space usage deviates from efficiency guidelines.`,
       savingsEstimate: `₹${savedVal}.00/hr`,
-      decision: "ENERGY_WASTAGE_DETECTED",
-      recommendedAction: lightsOn ? "TURN_OFF_LIGHTS" : "TURN_OFF_FAN"
-    };
-  } else if (peopleCount > 0 && !lightsOn) {
-    energy = {
-      observation: "Occupied workspace without lighting.",
-      reasoning: "Human presence detected. Lighting grid should activate to ensure OSHA compliance.",
-      savingsEstimate: "₹0.00/hr",
-      decision: "INSUFFICIENT_LIGHTING",
-      recommendedAction: "TURN_ON_LIGHTS"
+      decision: energyRule.decision,
+      recommendedAction: energyRule.action,
+      ruleTriggered: energyRule.name
     };
   }
 
   // 3. SAFETY AGENT
   let safety = {
     observation: "Safety checks nominal.",
+    evidence: `Egress is clear. ${evidenceStr}`,
+    confidence: 0.97,
     riskLevel: "LOW",
     reasoning: "All exit paths remain unobstructed, and occupant count is within safety limits.",
     decision: "COMPLIANT",
-    action: "CONTINUE_MONITORING"
+    action: "CONTINUE_MONITORING",
+    recommendedAction: "CONTINUE_MONITORING",
+    ruleTriggered: "None"
   };
 
-  const hasObstacle = detectedObjects.some(obj => 
-    ["obstacle", "unidentified object", "pallet", "box", "debris", "obstruction"].includes(obj.toLowerCase())
-  );
-
-  if (peopleCount > 8) {
+  if (safetyRule) {
     safety = {
-      observation: `High-density crowding detected (${peopleCount} people).`,
-      riskLevel: "MEDIUM",
-      reasoning: "Local occupancy limit breached. Increases emergency evacuation risk profile.",
-      decision: "CROWD_LIMIT_EXCEEDED",
-      action: "SEND_NOTIFICATION"
-    };
-  } else if (hasObstacle) {
-    safety = {
-      observation: "Emergency egress path is physically obstructed.",
-      riskLevel: "HIGH",
-      reasoning: "Visual obstacle identified blocking critical hallway zone or exit doorway.",
-      decision: "SAFETY_HAZARD_DETECTED",
-      action: "CREATE_INCIDENT"
+      observation: safetyRule.reasoning,
+      evidence: `Safety profile matches critical criteria. ${evidenceStr}`,
+      confidence: 0.93,
+      riskLevel: safetyRule.severity,
+      reasoning: `Rule [${safetyRule.name}] triggered. Safety boundaries or capacity guidelines violated.`,
+      decision: safetyRule.decision,
+      action: safetyRule.action,
+      recommendedAction: safetyRule.action,
+      ruleTriggered: safetyRule.name
     };
   }
 
   // 4. FACILITY AGENT
   let facility = {
     observation: "Structural integrity nominal.",
+    evidence: "Equipment states verified.",
+    confidence: 0.95,
+    reasoning: "Equipment states nominal. No maintenance triggers present.",
+    decision: "HEALTHY",
     facilityHealthScore: 98,
     recommendation: "Routine inspection cycle in 48h.",
-    priority: "LOW"
+    priority: "LOW",
+    ruleTriggered: "None"
   };
 
   if (peopleCount > 0 && deviceStates.lights && deviceStates.fan) {
     const rate = Math.round((peopleCount / 10) * 100);
     facility = {
       observation: `Active infrastructure utilization at ${rate}%.`,
+      evidence: `Active equipment load: Lights=ON, Fan=ON.`,
+      confidence: 0.96,
+      reasoning: "Infrastructure is being utilized under active occupants.",
+      decision: "ACTIVE",
       facilityHealthScore: 92,
       recommendation: "Optimize ventilation flow parameters.",
-      priority: "MEDIUM"
+      priority: "MEDIUM",
+      ruleTriggered: "None"
     };
   } else if (peopleCount === 0 && (deviceStates.lights || deviceStates.fan)) {
     facility = {
       observation: "Space utility operational in empty room.",
+      evidence: "Active utility load in empty space.",
+      confidence: 0.95,
+      reasoning: "Energy grids are operating without occupants present, decreasing health score.",
+      decision: "EFFICIENCY_RISK",
       facilityHealthScore: 84,
       recommendation: "Activate eco standby schedule.",
-      priority: "HIGH"
+      priority: "HIGH",
+      ruleTriggered: "None"
     };
   }
 

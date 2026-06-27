@@ -1,0 +1,70 @@
+[
+  {
+    "id": "unauthorized_access",
+    "name": "Unauthorized Access Detection",
+    "agent": "security",
+    "conditions": {
+      "restrictedSpaceTypes": ["Laboratory", "Research Lab", "Server Room"],
+      "personRequired": true,
+      "allowedHours": {
+        "start": "08:00",
+        "end": "18:00"
+      }
+    },
+    "severity": "HIGH",
+    "decision": "UNAUTHORIZED_ACCESS_RISK",
+    "action": "LOCK_DOOR",
+    "reasoning": "Person detected in a restricted space during non-operational hours."
+  },
+  {
+    "id": "insufficient_lighting",
+    "name": "Insufficient Lighting Alert",
+    "agent": "energy",
+    "conditions": {
+      "personRequired": true,
+      "lightsState": "OFF"
+    },
+    "severity": "MEDIUM",
+    "decision": "INSUFFICIENT_LIGHTING",
+    "action": "TURN_ON_LIGHTS",
+    "reasoning": "Occupants present in a room with lights turned off, violating safety and productivity guidelines."
+  },
+  {
+    "id": "energy_wastage",
+    "name": "Energy Wastage Anomaly",
+    "agent": "energy",
+    "conditions": {
+      "emptyRequired": true,
+      "anyDeviceOn": ["lights", "fan"],
+      "cooldownSeconds": 10
+    },
+    "severity": "MEDIUM",
+    "decision": "ENERGY_WASTAGE_DETECTED",
+    "action": "TURN_OFF_LIGHTS",
+    "reasoning": "Active lighting or climate systems detected in an empty room past the allowed cooldown window."
+  },
+  {
+    "id": "safety_hazard",
+    "name": "Egress Obstruction Anomaly",
+    "agent": "safety",
+    "conditions": {
+      "detectedObjects": ["obstacle", "box", "pallet", "debris", "obstruction"]
+    },
+    "severity": "HIGH",
+    "decision": "SAFETY_HAZARD_DETECTED",
+    "action": "CREATE_INCIDENT",
+    "reasoning": "Physical obstruction detected in emergency pathway or egress corridor."
+  },
+  {
+    "id": "crowd_limit",
+    "name": "Occupancy Overcrowding Warning",
+    "agent": "safety",
+    "conditions": {
+      "minPeopleCount": 8
+    },
+    "severity": "MEDIUM",
+    "decision": "CROWD_LIMIT_EXCEEDED",
+    "action": "SEND_NOTIFICATION",
+    "reasoning": "Personnel count exceeds the safety threshold for maximum capacity in this space."
+  }
+]
