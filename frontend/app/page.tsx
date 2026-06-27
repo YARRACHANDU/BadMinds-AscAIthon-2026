@@ -9,7 +9,14 @@ import {
   IncidentItem,
   TimelineEvent,
   PredictiveInsight,
-  DeviceStates
+  DeviceStates,
+  Prediction,
+  HealthScores,
+  ComplianceReport,
+  DailyReport,
+  MemoryPatterns,
+  SOPExecution,
+  SOPTemplate
 } from "../lib/types";
 
 export default function Home() {
@@ -65,6 +72,17 @@ export default function Home() {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [insights, setInsights] = useState<PredictiveInsight[]>([]);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [healthScores, setHealthScores] = useState<HealthScores | null>(null);
+  const [complianceReport, setComplianceReport] = useState<ComplianceReport | null>(null);
+  const [dailyReport, setDailyReport] = useState<DailyReport | null>(null);
+  const [memoryPatterns, setMemoryPatterns] = useState<MemoryPatterns | null>(null);
+  const [activeSops, setActiveSops] = useState<SOPExecution[]>([]);
+  const [sopTemplates, setSopTemplates] = useState<SOPTemplate[]>([]);
+  const [newCameraName, setNewCameraName] = useState<string>("");
+  const [newCameraRtsp, setNewCameraRtsp] = useState<string>("");
+  const [newCameraSpaceId, setNewCameraSpaceId] = useState<string>("");
+  const [replayEventIndex, setReplayEventIndex] = useState<number | null>(null);
 
   // Copilot Chat States
   const [copilotInput, setCopilotInput] = useState<string>(
@@ -272,6 +290,76 @@ export default function Home() {
     }
   };
 
+  const handleAddCamera = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCameraName.trim() || !newCameraSpaceId) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/cameras/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newCameraName,
+          rtspUrl: newCameraRtsp || undefined,
+          spaceId: newCameraSpaceId
+        })
+      });
+      if (res.ok) {
+        setNewCameraName("");
+        setNewCameraRtsp("");
+        setToastMessage("CCTV Camera registered and auto-mapped.");
+        setTimeout(() => setToastMessage(null), 2000);
+        refreshState();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleTriggerSOP = async (sopName: string, spaceId: string) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/sops/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sopName, spaceId, triggeredBy: "manual_override" })
+      });
+      if (res.ok) {
+        setToastMessage(`SOP Protocol [${sopName}] initialized on target.`);
+        setTimeout(() => setToastMessage(null), 2000);
+        refreshState();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSendMockTelemetry = async (deviceId: string) => {
+    try {
+      const mockW = Math.round(50 + Math.random() * 400);
+      const mockTemp = parseFloat((20 + Math.random() * 8).toFixed(1));
+      const mockHum = Math.round(40 + Math.random() * 30);
+      const mockBat = Math.round(80 + Math.random() * 20);
+
+      const res = await fetch(`${backendUrl}/api/devices/${deviceId}/telemetry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          powerConsumptionW: mockW,
+          temperature: mockTemp,
+          humidity: mockHum,
+          batteryLevel: mockBat
+        })
+      });
+      if (res.ok) {
+        setToastMessage("Mock telemetry packet ingested successfully.");
+        setTimeout(() => setToastMessage(null), 1500);
+        refreshState();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+
   // Build infrastructure topology tree
   const infraTree = React.useMemo(() => {
     const tree: {
@@ -430,6 +518,34 @@ export default function Home() {
       if (timelineRes.ok) {
         const timelineData = await timelineRes.json();
         if (timelineData.success) setTimeline(timelineData.events);
+      }
+
+      // 7. Fetch Predictions
+      const predictionsRes = await fetch(`${backendUrl}/api/predictions`);
+      if (predictionsRes.ok) {
+        const predictionsData = await predictionsRes.json();
+        if (predictionsData.success) setPredictions(predictionsData.predictions);
+      }
+
+      // 8. Fetch Health Scores
+      const healthRes = await fetch(`${backendUrl}/api/health-scores`);
+      if (healthRes.ok) {
+        const healthData = await healthRes.json();
+        if (healthData.success) setHealthScores(healthData.healthScores);
+      }
+
+      // 9. Fetch Compliance
+      const complianceRes = await fetch(`${backendUrl}/api/compliance`);
+      if (complianceRes.ok) {
+        const complianceData = await complianceRes.json();
+        if (complianceData.success) setComplianceReport(complianceData.report);
+      }
+
+      // 10. Fetch Active SOPs
+      const sopsRes = await fetch(`${backendUrl}/api/sops/active`);
+      if (sopsRes.ok) {
+        const sopsData = await sopsRes.json();
+        if (sopsData.success) setActiveSops(sopsData.active);
       }
     } catch (err) {
       console.warn("Heartbeat connection check failed:", err);
@@ -790,35 +906,49 @@ export default function Home() {
 
           {/* Navigation Links */}
           <nav className="flex flex-col gap-1.5">
-            {(["overview", "perception", "incidents", "actions", "copilot"]).map((tab) => {
-              const isActive = activeView === tab;
-              const activeCount = tab === "incidents" ? incidents.filter(i => i.status === "active").length : 0;
-              
-              let label = tab === "overview" ? "Overview" 
-                          : tab === "perception" ? "AI Perception Center"
-                          : tab === "incidents" ? "Incidents"
-                          : tab === "actions" ? "Action Log"
-                          : "AI Copilot";
-
+            {([
+              { id: "overview",    label: "Overview" },
+              { id: "command",     label: "Command Center" },
+              { id: "perception",  label: "AI Perception" },
+              { id: "heatmap",     label: "Campus Heatmap" },
+              { id: "incidents",   label: "Incidents" },
+              { id: "actions",     label: "Action Log" },
+              { id: "compliance",  label: "Compliance" },
+              { id: "report",      label: "Daily Report" },
+              { id: "memory",      label: "AI Memory" },
+              { id: "copilot",     label: "AI Copilot" },
+              { id: "settings",    label: "Settings" },
+            ]).map(({ id, label }) => {
+              const isActive = activeView === id;
+              const badge = id === "incidents" ? incidents.filter(i => i.status === "active").length
+                          : id === "command" && predictions.length > 0 ? predictions.length
+                          : 0;
               return (
                 <button
-                  key={tab}
+                  key={id}
                   onClick={() => {
-                    setActiveView(tab);
-                    if (tab === "perception" && rooms.length > 0 && !selectedRoomId) {
-                      setSelectedRoomId(rooms[0].roomId);
+                    setActiveView(id);
+                    if (id === "perception" && rooms.length > 0 && !selectedRoomId) setSelectedRoomId(rooms[0].roomId);
+                    if (id === "report" && !dailyReport) {
+                      fetch(`${backendUrl}/api/report/daily`).then(r => r.json()).then(d => { if (d.success) setDailyReport(d.report); });
+                    }
+                    if (id === "memory" && !memoryPatterns) {
+                      fetch(`${backendUrl}/api/memory/patterns`).then(r => r.json()).then(d => { if (d.success) setMemoryPatterns(d.patterns); });
+                    }
+                    if (id === "settings") {
+                      fetch(`${backendUrl}/api/sops`).then(r => r.json()).then(d => { if (d.success) setSopTemplates(d.templates); });
                     }
                   }}
                   className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-between ${
-                    isActive 
-                      ? "bg-zinc-900 text-white font-bold" 
+                    isActive
+                      ? "bg-zinc-900 text-white font-bold"
                       : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"
                   }`}
                 >
                   <span>{label}</span>
-                  {activeCount > 0 && (
+                  {badge > 0 && (
                     <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500 text-[10px] font-bold border border-rose-500/20">
-                      {activeCount}
+                      {badge}
                     </span>
                   )}
                 </button>
@@ -1528,64 +1658,106 @@ export default function Home() {
                 ) : (
                   incidents.map((ticket) => {
                     const matchRoom = rooms.find(r => r.roomId === ticket.roomId);
-                    const locationLabel = matchRoom ? `${matchRoom.roomName} (${matchRoom.facility})` : "Campus Facility";
+                    const locationLabel = matchRoom ? `${matchRoom.roomName} (${matchRoom.facility})` : ticket.roomId || "Campus Facility";
                     
                     const statusLabel = ticket.status === "active" ? "Investigating" : "Resolved";
                     const evidenceLabel = ticket.evidence?.detectedObjects?.join(", ") || ticket.description || "Telemetry anomaly";
-                    const ownerLabel = ticket.status === "active" ? "Incident Response Team" : "Resolved";
+                    const ownerLabel = ticket.assignedUser || "Unassigned";
+
+                    // Find if there is an active SOP running for this space
+                    const runningSOP = activeSops.find(s => s.spaceId === ticket.roomId && s.status === "running");
 
                     return (
                       <div
                         key={ticket.id}
-                        className={`bg-[#09090b] border p-6 rounded-xl flex flex-col gap-4 transition-all hover:border-zinc-800 ${
+                        className={`bg-[#09090b] border p-6 rounded-xl flex flex-col justify-between transition-all hover:border-zinc-800 ${
                           ticket.status === "active" 
-                            ? "border-rose-900/40 bg-rose-950/5"
+                            ? "border-rose-900/40 bg-rose-950/5 shadow-[0_0_15px_rgba(244,63,94,0.03)]"
                             : "border-zinc-900 opacity-60"
                         }`}
                       >
-                        <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                            ticket.status === "active" 
-                              ? "bg-rose-500/10 text-rose-500 border border-rose-500/20 animate-pulse"
-                              : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                          }`}>
-                            {statusLabel.toUpperCase()}
-                          </span>
-                          <span className="text-[10px] text-zinc-500 font-mono" suppressHydrationWarning>
-                            {new Date(ticket.timestamp).toLocaleTimeString()}
-                          </span>
-                        </div>
+                        <div>
+                          <div className="flex justify-between items-center border-b border-zinc-900 pb-2 mb-3">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                              ticket.status === "active" 
+                                ? "bg-rose-500/10 text-rose-500 border border-rose-500/20 animate-pulse"
+                                : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                            }`}>
+                              {statusLabel.toUpperCase()}
+                            </span>
+                            <span className="text-[10px] text-zinc-500 font-mono" suppressHydrationWarning>
+                              {new Date(ticket.timestamp).toLocaleTimeString()}
+                            </span>
+                          </div>
 
-                        <div className="space-y-1">
-                          <span className="text-[9px] text-zinc-500 uppercase font-bold">What Happened</span>
-                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">{ticket.title}</h4>
-                        </div>
+                          <div className="flex justify-between items-start gap-2 mb-3">
+                            <div className="space-y-1">
+                              <span className="text-[9px] text-zinc-500 uppercase font-bold">What Happened</span>
+                              <h4 className="text-xs font-bold text-white uppercase tracking-wider">{ticket.title}</h4>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[8px] font-bold ${
+                              ticket.severity === "CRITICAL" ? "bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse"
+                              : ticket.severity === "HIGH" ? "bg-orange-500/25 text-orange-400 border border-orange-500/30"
+                              : ticket.severity === "MEDIUM" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                              : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                            }`}>
+                              {ticket.severity}
+                            </span>
+                          </div>
 
-                        <div className="text-xs space-y-3 pt-2">
-                          <div>
-                            <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Where It Happened</span>
-                            <span className="text-white font-medium">{locationLabel}</span>
+                          <div className="text-xs space-y-3 pt-2">
+                            <div>
+                              <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Where It Happened</span>
+                              <span className="text-white font-medium">{locationLabel}</span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Why It Happened (Evidence)</span>
+                              <span className="text-zinc-350 leading-relaxed block max-h-[40px] overflow-y-auto pr-1">{evidenceLabel}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 border-t border-zinc-900/60 pt-2">
+                              <div>
+                                <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Assigned Owner</span>
+                                <span className="text-white font-medium">{ownerLabel}</span>
+                              </div>
+                              <div>
+                                <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Escalation Level</span>
+                                <span className="text-white font-medium font-mono">L{ticket.escalationLevel || 1} SLA</span>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Why It Happened (Evidence)</span>
-                            <span className="text-zinc-350 leading-relaxed">{evidenceLabel}</span>
-                          </div>
-                          <div>
-                            <span className="text-zinc-500 text-[10px] uppercase font-bold block mb-1">Who Owns It</span>
-                            <span className="text-white font-medium">{ownerLabel}</span>
-                          </div>
+
+                          {/* Active SOP Indicator */}
+                          {runningSOP && (
+                            <div className="mt-4 p-3 bg-zinc-950 border border-zinc-900 rounded-lg flex flex-col gap-1.5">
+                              <div className="flex justify-between items-center text-[9px]">
+                                <span className="text-emerald-400 font-bold uppercase tracking-wider animate-pulse">Running SOP Protocol</span>
+                                <span className="text-zinc-500 font-bold">{runningSOP.completedSteps.length}/{runningSOP.totalSteps} Steps</span>
+                              </div>
+                              <span className="text-[10px] text-white font-bold">{runningSOP.templateName}</span>
+                              {/* Progress bar */}
+                              <div className="w-full bg-zinc-900 rounded-full h-1.5 mt-1 overflow-hidden">
+                                <div
+                                  className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
+                                  style={{ width: `${(runningSOP.completedSteps.length / runningSOP.totalSteps) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {ticket.status === "active" && (
-                          <button
-                            onClick={() => resolveTicket(ticket.id)}
-                            className="w-full mt-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-white font-semibold py-2 rounded-lg text-[10px] transition-all cursor-pointer"
-                          >
-                            Resolve Incident
-                          </button>
+                          <div className="mt-5 flex gap-2">
+                            <button
+                              onClick={() => resolveTicket(ticket.id)}
+                              className="flex-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-white font-semibold py-2 rounded-lg text-[10px] transition-all cursor-pointer uppercase"
+                            >
+                              Resolve Ticket
+                            </button>
+                          </div>
                         )}
                       </div>
                     );
+
                   })
                 )}
               </div>
@@ -1656,9 +1828,702 @@ export default function Home() {
                   </tbody>
                 </table>
               </div>
-
             </div>
           )}
+
+          {/* ==================== VIEW: COMMAND CENTER ==================== */}
+          {activeView === "command" && (
+            <div className="flex flex-col gap-8 font-sans">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight text-white">Executive Command Center</h2>
+                <p className="text-zinc-500 text-xs mt-1">Spatio-temporal intelligence, proactive capacity forecasts, and autonomous SOP orchestration.</p>
+              </div>
+
+              {/* Health Score Overview */}
+              {healthScores ? (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-5 flex flex-col gap-2">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Campus Health Score</span>
+                    <span className="text-3xl font-extrabold text-white font-mono">{healthScores.campus.score}/100</span>
+                    <span className={`text-xs font-bold ${healthScores.campus.status === "Healthy" ? "text-emerald-500" : "text-amber-500"}`}>
+                      Grade {healthScores.campus.grade} &bull; {healthScores.campus.status}
+                    </span>
+                  </div>
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-5 flex flex-col gap-2">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Monitored Spaces</span>
+                    <span className="text-3xl font-extrabold text-white font-mono">{healthScores.campus.totalRooms} Rooms</span>
+                    <span className="text-xs text-zinc-400">
+                      {healthScores.campus.healthyRooms} Healthy &bull; {healthScores.campus.warningRooms} Warnings
+                    </span>
+                  </div>
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-5 flex flex-col gap-2">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Active Operations</span>
+                    <span className="text-3xl font-extrabold text-white font-mono">{healthScores.campus.totalActiveIncidents} Alerts</span>
+                    <span className="text-xs text-rose-400 font-bold">
+                      {healthScores.campus.criticalIncidents} Critical severity incidents
+                    </span>
+                  </div>
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-5 flex flex-col gap-2">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Predictive Insights</span>
+                    <span className="text-3xl font-extrabold text-amber-400 font-mono">{predictions.length} Active</span>
+                    <span className="text-xs text-zinc-400">Proactive actions recommendations ready</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6 text-zinc-500 text-xs">Loading health scorecard...</div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Predictions & capacity forecasts (7 cols) */}
+                <div className="lg:col-span-7 flex flex-col gap-6">
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6 flex flex-col gap-4">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider">Predictive Operations Engine</h3>
+                    <div className="divide-y divide-zinc-900">
+                      {predictions.length === 0 ? (
+                        <p className="text-xs text-zinc-500 py-4">No capacity anomalies or security risks forecasted.</p>
+                      ) : (
+                        predictions.map(p => (
+                          <div key={p.id} className="py-4 flex flex-col gap-2">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className={`text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded mr-2 ${
+                                  p.category === "security" ? "bg-rose-500/10 text-rose-500"
+                                  : p.category === "energy" ? "bg-emerald-500/10 text-emerald-500"
+                                  : "bg-blue-500/10 text-blue-500"
+                                }`}>
+                                  {p.category.toUpperCase()}
+                                </span>
+                                <span className="text-xs font-bold text-white">{p.roomName}</span>
+                              </div>
+                              <span className="text-xs font-semibold text-zinc-400">{p.confidence * 100}% Conf.</span>
+                            </div>
+                            <p className="text-xs text-zinc-300 font-medium">{p.prediction}</p>
+                            <div className="flex justify-between items-center text-[10px] text-zinc-500 pt-1">
+                              <span>Expected in ~{p.expectedTimeMinutes} mins</span>
+                              <span className="text-amber-500 font-bold">Action: {p.recommendedAction.replace(/_/g, " ")}</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Active SOP Orchestrations */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6 flex flex-col gap-4">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider">SOP Execution Audits</h3>
+                    <div className="flex flex-col gap-3">
+                      {activeSops.length === 0 ? (
+                        <span className="text-xs text-zinc-500">No SOP templates executing. System is in nominal standby state.</span>
+                      ) : (
+                        activeSops.map(sop => {
+                          const room = rooms.find(r => r.roomId === sop.spaceId);
+                          return (
+                            <div key={sop.executionId} className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg flex flex-col gap-2">
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-white">{sop.sopName}</span>
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${sop.status === "running" ? "bg-emerald-500/10 text-emerald-500" : "bg-zinc-800 text-zinc-400"}`}>
+                                  {sop.status.toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-zinc-400">
+                                Target Space: {room ? room.roomName : sop.spaceId} &bull; Started: {new Date(sop.startTime).toLocaleTimeString()}
+                              </div>
+                              <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden">
+                                <div className="bg-emerald-500 h-1.5" style={{ width: `${(sop.completedSteps.length / sop.totalSteps) * 100}%` }} />
+                              </div>
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                {Array.from({ length: sop.totalSteps }).map((_, i) => {
+                                  const stepNum = i + 1;
+                                  const isDone = sop.completedSteps.includes(stepNum);
+                                  return (
+                                    <span key={stepNum} className={`w-4 h-4 rounded text-[8px] font-bold flex items-center justify-center border ${
+                                      isDone ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-zinc-900 border-zinc-800 text-zinc-500"
+                                    }`}>
+                                      {stepNum}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Building Scores & SOP list (5 cols) */}
+                <div className="lg:col-span-5 flex flex-col gap-6">
+                  {/* Building Standings */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6 flex flex-col gap-4">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider">Campus Blocks Standings</h3>
+                    <div className="flex flex-col gap-3">
+                      {healthScores?.buildings.map(b => (
+                        <div key={b.name} className="flex justify-between items-center text-xs p-3 bg-zinc-950/60 rounded-lg border border-zinc-900/60">
+                          <div>
+                            <span className="font-bold text-white block">{b.name}</span>
+                            <span className="text-[10px] text-zinc-500">{b.roomCount} spaces monitored &bull; {b.criticalRooms} critical</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-extrabold text-white font-mono">{b.score}</span>
+                            <span className={`block text-[9px] font-bold ${b.status === "Healthy" ? "text-emerald-500" : b.status === "Warning" ? "text-amber-500" : "text-rose-500"}`}>
+                              {b.status.toUpperCase()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Manual SOP Execution trigger */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6 flex flex-col gap-4">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider">Manual SOP Dispatch</h3>
+                    <p className="text-[11px] text-zinc-500">Initiate structured multi-agent emergency/energy override sequences on specific spaces.</p>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase">SOP Protocol Template</label>
+                      <select id="sopManualSelect" className="bg-zinc-950 border border-zinc-900 text-xs text-white rounded-lg p-2">
+                        <option value="unauthorized_access">Unauthorized Access Sequence</option>
+                        <option value="energy_waste_shutdown">Active Device Shutoff Protocol</option>
+                        <option value="safety_blockage_clearance">Safety Exit Blockage Alert</option>
+                        <option value="extreme_heat_mitigation">Extreme Heat Ventilation Sequence</option>
+                        <option value="poor_air_quality_alert">Critical Air Quality Ventilation</option>
+                      </select>
+
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase mt-2">Target Space</label>
+                      <select id="sopManualSpace" className="bg-zinc-950 border border-zinc-900 text-xs text-white rounded-lg p-2">
+                        {rooms.map(r => (
+                          <option key={r.roomId} value={r.roomId}>{r.roomName} ({r.facility})</option>
+                        ))}
+                      </select>
+
+                      <button
+                        onClick={() => {
+                          const name = (document.getElementById("sopManualSelect") as HTMLSelectElement).value;
+                          const space = (document.getElementById("sopManualSpace") as HTMLSelectElement).value;
+                          handleTriggerSOP(name, space);
+                        }}
+                        className="mt-3 w-full py-2 bg-white text-black font-extrabold text-[10px] rounded-lg hover:bg-zinc-200 transition-all uppercase"
+                      >
+                        Dispatch SOP Sequence
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== VIEW: CAMPUS HEATMAP ==================== */}
+          {activeView === "heatmap" && (
+            <div className="flex flex-col gap-8 font-sans">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight text-white">Smart Campus Heatmap</h2>
+                <p className="text-zinc-500 text-xs mt-1">Spatial grid representation of operational health, occupancy, and risk conditions.</p>
+              </div>
+
+              <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6 flex flex-col gap-6">
+                {/* SVG Space Grid */}
+                <div className="w-full flex justify-center items-center p-8 bg-zinc-950 border border-zinc-900/60 rounded-lg overflow-x-auto min-h-[450px]">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 w-full max-w-4xl">
+                    {rooms.map((room) => {
+                      const activeIncs = incidents.filter(i => i.roomId === room.roomId && i.status === "active");
+                      const roomHealth = healthScores?.rooms.find(r => r.roomId === room.roomId);
+                      const displayScore = roomHealth ? roomHealth.score : (room.riskLevel === "CRITICAL" ? 20 : room.riskLevel === "HIGH" ? 50 : room.riskLevel === "MEDIUM" ? 75 : 98);
+                      
+                      let heatBg = "border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40 text-emerald-400";
+                      if (room.riskLevel === "CRITICAL") heatBg = "border-rose-500/30 bg-rose-500/5 hover:border-rose-500/60 text-rose-400 animate-pulse";
+                      else if (room.riskLevel === "HIGH" || room.riskLevel === "MEDIUM") heatBg = "border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 text-amber-400";
+
+                      return (
+                        <div
+                          key={room.roomId}
+                          onClick={() => {
+                            setSelectedRoomId(room.roomId);
+                            setActiveView("perception");
+                          }}
+                          className={`p-5 border rounded-xl flex flex-col justify-between h-[150px] cursor-pointer transition-all hover:scale-[1.02] ${heatBg}`}
+                        >
+                          <div>
+                            <div className="flex justify-between items-start">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider truncate max-w-[120px]">{room.roomName}</span>
+                              <span className="text-[10px] font-mono font-bold bg-black/40 px-1.5 py-0.5 rounded border border-zinc-800">{displayScore} pts</span>
+                            </div>
+                            <span className="text-[9px] text-zinc-500 block uppercase mt-0.5">{room.facility}</span>
+                          </div>
+
+                          <div className="text-xs pt-4 flex flex-col gap-1">
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-zinc-500 font-medium">Occupancy:</span>
+                              <span className="text-white font-bold">{room.peopleCount} Pers. ({room.occupancyStatus})</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-zinc-500 font-medium">Energy Use:</span>
+                              <span className="text-white font-mono font-semibold">{room.deviceStates.lights ? "Lights ON" : "Lights OFF"} &bull; {room.deviceStates.fan ? "Fan ON" : "Fan OFF"}</span>
+                            </div>
+                            {activeIncs.length > 0 && (
+                              <span className="text-[9px] bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded px-1.5 py-0.5 mt-2 font-bold text-center uppercase tracking-wider">
+                                {activeIncs.length} Active Alert
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Heatmap Legend */}
+                <div className="flex justify-between items-center text-xs text-zinc-500 border-t border-zinc-900 pt-4">
+                  <div className="flex gap-4">
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-emerald-500/10 border border-emerald-500/40" /> Healthy (90-100 pts)</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-amber-500/10 border border-amber-500/40" /> Warning (60-89 pts)</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-rose-500/15 border border-rose-500/50 animate-pulse" /> Critical (&lt;60 pts)</span>
+                  </div>
+                  <span>Click block space to dispatch camera perception view</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== VIEW: COMPLIANCE ==================== */}
+          {activeView === "compliance" && (
+            <div className="flex flex-col gap-8 font-sans">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight text-white">AI Compliance Auditor</h2>
+                <p className="text-zinc-500 text-xs mt-1">Autonomous checks auditing restricted access, blockage hazards, and energy efficiency parameters.</p>
+              </div>
+
+              {complianceReport ? (
+                <div className="flex flex-col gap-6">
+                  {/* Top Summary Score */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-5">
+                      <div className="relative w-20 h-20 flex items-center justify-center">
+                        <svg className="w-full h-full transform -rotate-90">
+                          <circle cx="40" cy="40" r="34" className="stroke-zinc-900 fill-none" strokeWidth="6" />
+                          <circle cx="40" cy="40" r="34" className="stroke-emerald-500 fill-none transition-all duration-1000" strokeWidth="6"
+                            strokeDasharray={2 * Math.PI * 34}
+                            strokeDashoffset={2 * Math.PI * 34 * (1 - complianceReport.overallComplianceScore / 100)} />
+                        </svg>
+                        <span className="absolute text-sm font-extrabold text-white font-mono">{complianceReport.overallComplianceScore}%</span>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Overall Compliance Rating</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5">Audited {complianceReport.summary.totalRoomsAudited} rooms, {complianceReport.summary.totalChecks} parameter points check.</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                      <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-lg text-center">
+                        <span className="text-zinc-500 uppercase font-bold text-[9px] block">Compliant</span>
+                        <span className="text-white font-extrabold text-sm font-mono">{complianceReport.summary.compliantRooms}</span>
+                      </div>
+                      <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-lg text-center">
+                        <span className="text-zinc-500 uppercase font-bold text-[9px] block">Partial</span>
+                        <span className="text-amber-500 font-extrabold text-sm font-mono">{complianceReport.summary.partialRooms}</span>
+                      </div>
+                      <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-lg text-center">
+                        <span className="text-zinc-500 uppercase font-bold text-[9px] block">Violated</span>
+                        <span className="text-rose-500 font-extrabold text-sm font-mono">{complianceReport.summary.nonCompliantRooms}</span>
+                      </div>
+                      <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-lg text-center">
+                        <span className="text-zinc-500 uppercase font-bold text-[9px] block">Passed Checks</span>
+                        <span className="text-emerald-500 font-extrabold text-sm font-mono">{complianceReport.summary.totalPassed}/{complianceReport.summary.totalChecks}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Room violations listing */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">Space Audits & Policy Violations</h3>
+                    <div className="divide-y divide-zinc-900">
+                      {complianceReport.rooms.map(room => (
+                        <div key={room.roomId} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white">{room.roomName}</span>
+                              <span className="text-[10px] text-zinc-500 font-medium">({room.facility})</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {room.violations.length === 0 ? (
+                                <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-1">
+                                  &bull; Meets all active safety and security compliance conditions
+                                </span>
+                              ) : (
+                                room.violations.map(v => (
+                                  <span key={v.ruleId} className="text-[9px] px-2 py-0.5 rounded border border-rose-950 bg-rose-950/20 text-rose-400 font-bold">
+                                    {v.title}: {v.violation}
+                                  </span>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs font-bold text-white font-mono block">{room.complianceScore}% Score</span>
+                            <span className={`text-[9px] uppercase font-bold ${
+                              room.status === "Compliant" ? "text-emerald-500"
+                              : room.status === "Partial" ? "text-amber-500"
+                              : "text-rose-500 animate-pulse"
+                            }`}>
+                              {room.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 border border-zinc-900 rounded-xl text-zinc-500 text-xs">Loading Compliance Audits...</div>
+              )}
+            </div>
+          )}
+
+          {/* ==================== VIEW: DAILY REPORT ==================== */}
+          {activeView === "report" && (
+            <div className="flex flex-col gap-8 font-sans max-w-4xl mx-auto">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-bold tracking-tight text-white">Daily Operational Report</h2>
+                  <p className="text-zinc-500 text-xs mt-1">Structured PDF-ready summary of campus efficiency, ESG achievements, and ROI statistics.</p>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="bg-zinc-900 border border-zinc-800 text-white hover:bg-zinc-800 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                >
+                  Print / Export PDF
+                </button>
+              </div>
+
+              {dailyReport ? (
+                <div className="bg-[#0c0c0e] border border-zinc-900 rounded-2xl p-8 flex flex-col gap-8 text-xs text-zinc-300">
+                  <div className="border-b border-zinc-900 pb-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h1 className="text-lg font-bold text-white">{dailyReport.reportTitle}</h1>
+                      <p className="text-[10px] text-zinc-500 font-semibold tracking-wider uppercase mt-1">Period: {dailyReport.period} &bull; Generated: {new Date(dailyReport.generatedAt).toLocaleString()}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Campus Health Status</span>
+                      <span className="block text-lg font-extrabold text-emerald-400">{dailyReport.executiveSummary.campusStatus} ({dailyReport.executiveSummary.campusHealthScore} pts)</span>
+                    </div>
+                  </div>
+
+                  {/* Summary grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Energy & ESG ROI */}
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-bold uppercase text-white tracking-wider border-b border-zinc-900 pb-2">1. Energy Savings & ESG Achievements</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl">
+                          <span className="text-zinc-500 text-[10px] block mb-1 uppercase font-bold">Estimated Saved Today</span>
+                          <span className="text-lg font-extrabold text-white font-mono">₹{dailyReport.energy.savedTodayINR}</span>
+                        </div>
+                        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl">
+                          <span className="text-zinc-500 text-[10px] block mb-1 uppercase font-bold">Projected Annual Savings</span>
+                          <span className="text-lg font-extrabold text-emerald-400 font-mono">₹{dailyReport.energy.projectedAnnualINR}</span>
+                        </div>
+                        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl">
+                          <span className="text-zinc-500 text-[10px] block mb-1 uppercase font-bold">Carbon Footprint Saved</span>
+                          <span className="text-lg font-extrabold text-white font-mono">{dailyReport.energy.carbonReducedKg} kg CO2</span>
+                        </div>
+                        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl">
+                          <span className="text-zinc-500 text-[10px] block mb-1 uppercase font-bold">Equivalent Trees Saved</span>
+                          <span className="text-lg font-extrabold text-emerald-500 font-mono">{dailyReport.energy.equivalentTreesSaved} Trees</span>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        Shutoff automation triggered <strong className="text-white">{dailyReport.energy.automatedShutdowns} times</strong> today in vacant rooms.
+                      </div>
+                    </div>
+
+                    {/* Incidents & Actions summary */}
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-bold uppercase text-white tracking-wider border-b border-zinc-900 pb-2">2. Incident Dispatch Summary</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl">
+                          <span className="text-zinc-500 text-[10px] block mb-1 uppercase font-bold">Today Total Incidents</span>
+                          <span className="text-lg font-extrabold text-white font-mono">{dailyReport.incidents.todayTotal}</span>
+                        </div>
+                        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl">
+                          <span className="text-zinc-500 text-[10px] block mb-1 uppercase font-bold">Resolved Today</span>
+                          <span className="text-lg font-extrabold text-emerald-500 font-mono">{dailyReport.incidents.todayResolved}</span>
+                        </div>
+                        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl">
+                          <span className="text-zinc-500 text-[10px] block mb-1 uppercase font-bold">Avg. Resolution SLA</span>
+                          <span className="text-lg font-extrabold text-white font-mono">{dailyReport.incidents.averageResolutionTimeMin} mins</span>
+                        </div>
+                        <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl">
+                          <span className="text-zinc-500 text-[10px] block mb-1 uppercase font-bold">Automation Success Rate</span>
+                          <span className="text-lg font-extrabold text-emerald-400 font-mono">{dailyReport.actions.automationSuccessRate}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Top risk spaces */}
+                  <div className="space-y-3 mt-4">
+                    <h3 className="text-xs font-bold uppercase text-white tracking-wider border-b border-zinc-900 pb-2">3. Prioritized Areas for Facility Improvements</h3>
+                    <div className="divide-y divide-zinc-900">
+                      {dailyReport.recommendations.map((rec, idx) => (
+                        <div key={idx} className="py-3 flex justify-between items-center">
+                          <div>
+                            <span className="text-xs font-bold text-white block">{rec.action}</span>
+                            <span className="text-[10px] text-zinc-500">Category: {rec.category} &bull; Priority: {rec.priority}</span>
+                          </div>
+                          <span className="text-emerald-500 font-bold font-mono">Est. Save: {rec.estimatedSaving}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 border border-zinc-900 rounded-xl text-zinc-500 text-xs">Generating Operational PDF Report...</div>
+              )}
+            </div>
+          )}
+
+          {/* ==================== VIEW: AI MEMORY ==================== */}
+          {activeView === "memory" && (
+            <div className="flex flex-col gap-8 font-sans">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight text-white">AI Memory & Pattern Recognition</h2>
+                <p className="text-zinc-500 text-xs mt-1">Long-term spatial intelligence, utilization hotspots, and temporal analysis models.</p>
+              </div>
+
+              {memoryPatterns ? (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                  {/* Utilization Hotspots (7 cols) */}
+                  <div className="lg:col-span-7 flex flex-col gap-6">
+                    <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                      <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">Peak Space Utilization Rates</h3>
+                      <div className="space-y-4">
+                        {memoryPatterns.mostActiveRooms.map(room => (
+                          <div key={room.roomId} className="flex flex-col gap-1.5 text-xs">
+                            <div className="flex justify-between items-center font-semibold">
+                              <span className="text-white">{room.roomName} ({room.facility})</span>
+                              <span className="text-zinc-400 font-mono">{room.utilizationRate}% Capacity</span>
+                            </div>
+                            <div className="w-full bg-zinc-900 rounded-full h-2 overflow-hidden">
+                              <div className="bg-blue-500 h-2" style={{ width: `${room.utilizationRate}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                      <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">Energy Waste Anomaly Hotspots</h3>
+                      <div className="space-y-4">
+                        {memoryPatterns.energyWasteHotspots.length === 0 ? (
+                          <span className="text-xs text-zinc-500">No rooms flagging repeated energy waste.</span>
+                        ) : (
+                          memoryPatterns.energyWasteHotspots.map(room => (
+                            <div key={room.roomId} className="p-3 bg-zinc-950/60 rounded-lg border border-zinc-900 flex justify-between items-center text-xs">
+                              <div>
+                                <span className="font-bold text-white block">{room.roomName}</span>
+                                <span className="text-[10px] text-zinc-500">Waste Duration: {room.emptyDuration}</span>
+                              </div>
+                              <span className="text-rose-400 font-bold">ANOMALOUS ACTUATOR ON</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Temporal Incidents & Insights (5 cols) */}
+                  <div className="lg:col-span-5 flex flex-col gap-6">
+                    <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                      <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">Temporal Risk Analysis</h3>
+                      <div className="space-y-3">
+                        <div className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center text-xs">
+                          <span className="text-zinc-500 font-medium">Peak Risk Period:</span>
+                          <span className="text-white font-bold font-mono">{memoryPatterns.peakRiskHour}:00 - {memoryPatterns.peakRiskHour + 1}:00 hrs</span>
+                        </div>
+                        <div className="space-y-2 pt-2">
+                          <span className="text-[10px] text-zinc-500 font-bold uppercase block mb-1">Hourly Risk Event Distribution</span>
+                          {memoryPatterns.peakRiskPeriods.map(p => (
+                            <div key={p.hour} className="flex justify-between items-center text-[11px]">
+                              <span className="text-zinc-400 font-mono">{p.hour}</span>
+                              <span className="text-white font-mono">{p.count} events</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                      <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">Long-Term Operational Insights</h3>
+                      <ul className="list-disc pl-4 text-xs text-zinc-400 space-y-2">
+                        {memoryPatterns.longTermInsights.map((insight, idx) => (
+                          <li key={idx} className="leading-relaxed"><strong className="text-white">{insight}</strong></li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 border border-zinc-900 rounded-xl text-zinc-500 text-xs">Synthesizing Temporal Memories...</div>
+              )}
+            </div>
+          )}
+
+          {/* ==================== VIEW: SETTINGS ==================== */}
+          {activeView === "settings" && (
+            <div className="flex flex-col gap-8 font-sans">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight text-white font-sans">Physical AI System Configuration</h2>
+                <p className="text-zinc-500 text-xs mt-1">Configure CCTV cameras, manage active SOP templates, establish alert routing rules, and view device telemetry.</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Forms and registers (7 cols) */}
+                <div className="lg:col-span-7 flex flex-col gap-6">
+                  {/* CCTV Onboarding */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">CCTV Camera Auto-Onboarding</h3>
+                    <form onSubmit={handleAddCamera} className="space-y-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Camera Name / Label</label>
+                        <input
+                          type="text"
+                          value={newCameraName}
+                          onChange={(e) => setNewCameraName(e.target.value)}
+                          placeholder="e.g. Corridor North 3 CAM"
+                          className="bg-zinc-950 border border-zinc-900 text-xs text-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-700"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[10px] text-zinc-500 uppercase font-bold">RTSP Video Source Stream URL</label>
+                        <input
+                          type="text"
+                          value={newCameraRtsp}
+                          onChange={(e) => setNewCameraRtsp(e.target.value)}
+                          placeholder="e.g. rtsp://admin:secret@192.168.1.50:554/h264"
+                          className="bg-zinc-950 border border-zinc-900 text-xs text-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-700 font-mono"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Onboard to Space</label>
+                        <select
+                          value={newCameraSpaceId}
+                          onChange={(e) => setNewCameraSpaceId(e.target.value)}
+                          className="bg-zinc-950 border border-zinc-900 text-xs text-white rounded-lg p-2.5 focus:outline-none focus:border-zinc-700"
+                        >
+                          <option value="">Select Target Space...</option>
+                          {rooms.map(r => (
+                            <option key={r.roomId} value={r.roomId}>{r.roomName} ({r.facility})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-full py-2.5 bg-white text-black font-extrabold text-[10px] rounded-lg hover:bg-zinc-200 transition-all uppercase"
+                      >
+                        Register CCTV Camera
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* SOP Templates Manager */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">SOP Template Standard Definitions</h3>
+                    <div className="flex flex-col gap-4">
+                      {sopTemplates.length === 0 ? (
+                        <span className="text-xs text-zinc-500">Loading SOP workflow patterns...</span>
+                      ) : (
+                        sopTemplates.map(t => (
+                          <div key={t.key} className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg flex flex-col gap-2">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-bold text-white">{t.name}</span>
+                              <span className="text-[10px] text-zinc-500">{t.stepCount} sequential steps</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400">{t.description}</p>
+                            <div className="space-y-1 mt-2">
+                              {t.steps.map(s => (
+                                <div key={s.step} className="flex gap-2 text-[10px]">
+                                  <span className="text-emerald-400 font-bold font-mono">Step {s.step}:</span>
+                                  <span className="text-zinc-350">{s.description} ({s.action})</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Device telemetry & role manager (5 cols) */}
+                <div className="lg:col-span-5 flex flex-col gap-6">
+                  {/* Alert Routing Rules */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">Automatic Alert Dispatch Rules</h3>
+                    <div className="space-y-4 text-xs text-zinc-400">
+                      <div className="p-3 bg-zinc-950/60 border border-zinc-900 rounded-lg">
+                        <strong className="text-white block">Critical Security Incidents</strong>
+                        <span>Assigned Role: <strong>Security</strong> &bull; Auto-triggers SOP sequence</span>
+                      </div>
+                      <div className="p-3 bg-zinc-950/60 border border-zinc-900 rounded-lg">
+                        <strong className="text-white block">Energy Waste Hazards</strong>
+                        <span>Assigned Role: <strong>Facility</strong> &bull; Auto-toggles device switches</span>
+                      </div>
+                      <div className="p-3 bg-zinc-950/60 border border-zinc-900 rounded-lg">
+                        <strong className="text-white block">Safety Obstructions & Clearances</strong>
+                        <span>Assigned Role: <strong>Safety</strong> &bull; Auto-routes to floor warden</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Device Telemetry Monitor */}
+                  <div className="bg-[#0c0c0e] border border-zinc-900 rounded-xl p-6">
+                    <h3 className="text-xs font-semibold uppercase text-zinc-400 tracking-wider mb-4">IoT Telemetry Feeds</h3>
+                    <div className="space-y-3">
+                      {rooms.map(room => (
+                        <div key={room.roomId} className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg flex flex-col gap-3">
+                          <div className="flex justify-between items-center text-xs font-bold text-white">
+                            <span>{room.roomName} Devices</span>
+                            <button
+                              onClick={() => handleSendMockTelemetry(room.roomId)}
+                              className="text-[9px] bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white px-2 py-0.5 rounded transition-all"
+                            >
+                              Push Telemetry
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-[10px] text-zinc-400">
+                            <div className="bg-black/30 p-2 rounded">
+                              <span className="block text-zinc-500">Lights Actuator</span>
+                              <strong className={room.deviceStates.lights ? "text-emerald-400" : "text-zinc-500"}>
+                                {room.deviceStates.lights ? "ACTIVE" : "STANDBY"}
+                              </strong>
+                            </div>
+                            <div className="bg-black/30 p-2 rounded">
+                              <span className="block text-zinc-500">HVAC/Fan Actuator</span>
+                              <strong className={room.deviceStates.fan ? "text-emerald-400" : "text-zinc-500"}>
+                                {room.deviceStates.fan ? "ACTIVE" : "STANDBY"}
+                              </strong>
+                            </div>
+                            <div className="bg-black/30 p-2 rounded">
+                              <span className="block text-zinc-500">Lock Relay</span>
+                              <strong className={room.deviceStates.doorLocked ? "text-red-400" : "text-emerald-400"}>
+                                {room.deviceStates.doorLocked ? "LOCKED" : "UNLOCKED"}
+                              </strong>
+                            </div>
+                            <div className="bg-black/30 p-2 rounded">
+                              <span className="block text-zinc-500">Alarm Siren</span>
+                              <strong className={room.deviceStates.alarm ? "text-red-500 animate-pulse font-bold" : "text-zinc-500"}>
+                                {room.deviceStates.alarm ? "ACTIVE" : "SILENT"}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
 
 
 
@@ -1721,9 +2586,12 @@ export default function Home() {
                   {/* Suggested Prompts */}
                   <div className="flex flex-wrap gap-2 justify-center">
                     {[
+                      "Generate operational summary.",
+                      "What is the campus health score?",
                       "Which rooms are wasting energy?",
                       "Show unresolved incidents.",
-                      "Who owns Robotics Lab?"
+                      "Predict tomorrow's risk.",
+                      "Show compliance status.",
                     ].map(prompt => (
                       <button
                         key={prompt}

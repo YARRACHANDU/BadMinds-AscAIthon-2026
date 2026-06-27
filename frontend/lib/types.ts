@@ -29,7 +29,6 @@ export interface SafetyAgentOutput {
   evidence?: string;
 }
 
-
 export interface FacilityAgentOutput {
   observation: string;
   facilityHealthScore: number;
@@ -148,7 +147,6 @@ export interface OperationalMetrics {
   incidentsToday: number;
   actionsExecuted: number;
   estimatedEnergySaved: number;
-  // Business ROI metrics
   energySavedTodayINR: number;
   energySavedThisWeekINR: number;
   energySavedThisMonthINR: number;
@@ -156,7 +154,6 @@ export interface OperationalMetrics {
   operationalEfficiencyScore: number;
   incidentReductionPercent: number;
   automationSuccessRate: number;
-  // ESG metrics
   carbonReducedKg: number;
   equivalentTreesSaved: number;
   environmentalImpactScore: number;
@@ -190,6 +187,8 @@ export interface IncidentItem {
   timestamp: string;
   resolvedAt: string | null;
   escalationLevel?: number;
+  assignedUser?: string;
+  building?: string;
   recommendedAction?: string;
   evidence?: {
     detectedObjects: string[];
@@ -204,10 +203,19 @@ export interface IncidentItem {
 export interface TimelineEvent {
   id: string;
   roomId: string;
+  roomName?: string | null;
   type: "info" | "warning" | "critical" | "action";
   message: string;
   referenceId: string | null;
   timestamp: string;
+  snapshot?: {
+    peopleCount?: number;
+    occupancyStatus?: string;
+    riskLevel?: string;
+    deviceStates?: Record<string, boolean>;
+    agentDecision?: string;
+    agentReasoning?: string;
+  } | null;
 }
 
 export interface PredictiveInsight {
@@ -217,4 +225,172 @@ export interface PredictiveInsight {
   message: string;
   impact: string;
   confidence: number;
+}
+
+export interface Prediction {
+  id: string;
+  category: "utilization" | "energy" | "security" | "safety";
+  roomId: string;
+  roomName: string;
+  prediction: string;
+  confidence: number;
+  expectedTimeMinutes: number;
+  recommendedAction: string;
+}
+
+export interface HealthScoreRoom {
+  roomId: string;
+  roomName: string;
+  facility: string;
+  score: number;
+  grade: string;
+  status: "Healthy" | "Warning" | "Critical";
+  factors: string[];
+  riskLevel: string;
+  activeIncidentCount: number;
+}
+
+export interface HealthScoreBuilding {
+  name: string;
+  score: number;
+  grade: string;
+  status: "Healthy" | "Warning" | "Critical";
+  roomCount: number;
+  criticalRooms: number;
+  rooms: HealthScoreRoom[];
+}
+
+export interface HealthScores {
+  generatedAt: string;
+  campus: {
+    score: number;
+    grade: string;
+    status: string;
+    totalRooms: number;
+    totalActiveIncidents: number;
+    criticalIncidents: number;
+    healthyRooms: number;
+    warningRooms: number;
+    criticalRooms: number;
+  };
+  buildings: HealthScoreBuilding[];
+  rooms: HealthScoreRoom[];
+}
+
+export interface ComplianceRuleResult {
+  ruleId: string;
+  category: string;
+  title: string;
+  description: string;
+  severity: string;
+  passed: boolean;
+  violation: string | null;
+}
+
+export interface ComplianceRoomResult {
+  roomId: string;
+  roomName: string;
+  facility: string;
+  complianceScore: number;
+  passedRules: number;
+  totalRules: number;
+  violations: ComplianceRuleResult[];
+  criticalViolations: number;
+  status: "Compliant" | "Partial" | "Non-Compliant";
+}
+
+export interface ComplianceReport {
+  auditedAt: string;
+  overallComplianceScore: number;
+  status: string;
+  summary: {
+    totalRoomsAudited: number;
+    compliantRooms: number;
+    partialRooms: number;
+    nonCompliantRooms: number;
+    totalChecks: number;
+    totalPassed: number;
+    totalFailed: number;
+  };
+  rules: Array<{ id: string; title: string; category: string; severity: string }>;
+  rooms: ComplianceRoomResult[];
+}
+
+export interface SOPTemplate {
+  key: string;
+  name: string;
+  description: string;
+  stepCount: number;
+  steps: Array<{ step: number; action: string; delayMs: number; description: string }>;
+}
+
+export interface SOPExecution {
+  executionId: string;
+  sopName: string;
+  templateName: string;
+  spaceId: string;
+  triggeredBy: string;
+  incidentId: string | null;
+  startTime: string;
+  status: "running" | "completed" | "aborted";
+  completedSteps: number[];
+  pendingSteps: number[];
+  totalSteps: number;
+  completedAt?: string;
+}
+
+export interface DailyReport {
+  reportTitle: string;
+  generatedAt: string;
+  reportDate: string;
+  period: string;
+  executiveSummary: {
+    campusHealthScore: number;
+    campusStatus: string;
+    totalRoomsMonitored: number;
+    currentOccupancy: string;
+    overallRiskPosture: string;
+  };
+  energy: {
+    savedTodayINR: number;
+    savedThisWeekINR: number;
+    projectedAnnualINR: number;
+    carbonReducedKg: number;
+    equivalentTreesSaved: number;
+    wasteRoomsCount: number;
+    automatedShutdowns: number;
+  };
+  incidents: {
+    todayTotal: number;
+    todayResolved: number;
+    todayActive: number;
+    currentlyActive: number;
+    bySeverity: Record<string, number>;
+    averageResolutionTimeMin: number;
+  };
+  actions: {
+    totalToday: number;
+    completed: number;
+    failed: number;
+    automationSuccessRate: number;
+    topActionTypes: Array<{ type: string; count: number }>;
+  };
+  occupancy: {
+    currentRate: number;
+    occupiedSpaces: string[];
+    emptyWithActiveDevices: string[];
+  };
+  topRisks: Array<{ roomName: string; facility: string; riskLevel: string }>;
+  recommendations: Array<{ priority: string; category: string; action: string; estimatedSaving: string }>;
+}
+
+export interface MemoryPatterns {
+  generatedAt: string;
+  mostActiveRooms: Array<{ roomId: string; roomName: string; facility: string; utilizationRate: number; averageOccupancy: number }>;
+  frequentIncidentRooms: Array<{ roomName: string; totalIncidents: number; bySeverity: Record<string, number> }>;
+  energyWasteHotspots: Array<{ roomId: string; roomName: string; facility: string; lightsOn: boolean; fanOn: boolean; emptyDuration: string }>;
+  peakRiskPeriods: Array<{ hour: string; count: number }>;
+  peakRiskHour: number;
+  automationEffectiveness: { successRate: number; totalActionsAnalyzed: number; completedActions: number; failedActions: number };
+  longTermInsights: string[];
 }

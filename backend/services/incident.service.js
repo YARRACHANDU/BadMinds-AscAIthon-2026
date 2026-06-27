@@ -5,6 +5,7 @@
 
 const { Incident, Space, User } = require("../models/schemas");
 const eventTimeline = require("./eventTimeline.service");
+const sopService = require("./sop.service");
 
 /**
  * Creates a database-driven incident ticket and routes it dynamically.
@@ -33,13 +34,32 @@ const createIncident = async (spaceId, title, description, severity, evidence = 
       return null;
     }
 
-    // 1. Dynamic Alert Routing Engine
-    // Determine assigned owner based on severity, type, and ownership assignments
+    // 1. Dynamic Alert Routing Engine — role-based assignment
+    // Map incident type to responsible role
+    let targetRole = null;
+    const titleLower = title.toLowerCase();
+    if (titleLower.includes("unauthorized") || titleLower.includes("access") || titleLower.includes("breach") || titleLower.includes("intrusion")) {
+      targetRole = "SECURITY_OFFICER";
+    } else if (titleLower.includes("energy") || titleLower.includes("waste") || titleLower.includes("maintenance") || titleLower.includes("device")) {
+      targetRole = "FACILITY_MANAGER";
+    } else if (titleLower.includes("safety") || titleLower.includes("obstruction") || titleLower.includes("crowd") || titleLower.includes("hazard")) {
+      targetRole = "SAFETY_OFFICER";
+    }
+
+    // Attempt to find a user with the target role in this org
     let assignedUserId = null;
-    if (severity === "CRITICAL" || severity === "HIGH") {
-      assignedUserId = space.owners.emergency || space.owners.escalation || space.owners.primary;
-    } else {
-      assignedUserId = space.owners.primary || space.owners.secondary;
+    if (targetRole) {
+      const roleUser = await User.findOne({ role: targetRole, organizationId: space.organizationId });
+      if (roleUser) assignedUserId = roleUser._id;
+    }
+
+    // Fall back to space ownership hierarchy
+    if (!assignedUserId) {
+      if (severity === "CRITICAL" || severity === "HIGH") {
+        assignedUserId = space.owners.emergency?._id || space.owners.escalation?._id || space.owners.primary?._id || null;
+      } else {
+        assignedUserId = space.owners.primary?._id || space.owners.secondary?._id || null;
+      }
     }
 
     // Impact Score Calculation based on severity
@@ -80,9 +100,25 @@ const createIncident = async (spaceId, title, description, severity, evidence = 
     await eventTimeline.addEvent(
       realSpaceId,
       severity === "CRITICAL" || severity === "HIGH" ? "critical" : "warning",
-      `New Ticket Created [${severity}]: ${title}`,
-      incident._id.toString()
+      `New Ticket Created [${severity}]: ${title} — Routed to ${targetRole || "Space Owner"}`,
+      incident._id.toString(),
+      // Snapshot for Digital Twin replay
+      {
+        peopleCount: space.peopleCount,
+        occupancyStatus: space.occupancyStatus,
+        riskLevel: space.riskLevel,
+        deviceStates: space.deviceStates,
+        agentDecision: title,
+        agentReasoning: description
+      }
     );
+
+    // Auto-trigger the matching SOP (non-blocking)
+    const sopName = sopService.resolveSOPForIncident(title, severity);
+    if (sopName) {
+      sopService.executeSOP(sopName, realSpaceId, `Incident: ${title}`, incident._id.toString())
+        .catch(err => console.error("[SOP Auto-trigger] Failed:", err.message));
+    }
 
     return incident;
   } catch (error) {

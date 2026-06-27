@@ -199,7 +199,12 @@ const DeviceSchema = new Schema({
   floorId: { type: Schema.Types.ObjectId, ref: "Floor" },
   buildingId: { type: Schema.Types.ObjectId, ref: "Building" },
   organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true },
-  ownerId: { type: Schema.Types.ObjectId, ref: "User" }
+  ownerId: { type: Schema.Types.ObjectId, ref: "User" },
+  // CCTV Auto-Onboarding fields
+  rtspUrl: { type: String, default: null },
+  autoMapped: { type: Boolean, default: false },
+  streamActive: { type: Boolean, default: false },
+  lastPingAt: { type: Date, default: null }
 });
 
 // 8. Incident Schema
@@ -271,7 +276,16 @@ const EventLogSchema = new Schema({
   message: { type: String, required: true },
   referenceId: { type: String },
   timestamp: { type: Date, default: Date.now },
-  organizationId: { type: Schema.Types.ObjectId, ref: "Organization" }
+  organizationId: { type: Schema.Types.ObjectId, ref: "Organization" },
+  // Digital Twin Timeline Replay snapshot
+  snapshot: {
+    peopleCount: { type: Number },
+    occupancyStatus: { type: String },
+    riskLevel: { type: String },
+    deviceStates: { type: Schema.Types.Mixed },
+    agentDecision: { type: String },
+    agentReasoning: { type: String }
+  }
 });
 
 // 12. Detection Schema for Dynamic Frame States
