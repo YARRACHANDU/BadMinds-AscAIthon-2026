@@ -293,6 +293,12 @@ const getMetrics = () => {
   const totalActions = completedActions + failedActions;
   const automationSuccessRate = totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 98;
 
+  // Sustainability Metrics
+  const carbonReducedKg = parseFloat((baseEnergySavedToday * 0.85).toFixed(2));
+  const equivalentTreesSaved = Math.round(baseEnergySavedToday * 0.05) || 1;
+  const environmentalImpactScore = Math.min(100, Math.round(80 + baseEnergySavedToday * 2));
+  const sustainabilityIndex = Math.round((securityScore + safetyScore + energyEfficiencyScore) / 3);
+
   return {
     occupancyRate,
     securityScore,
@@ -309,7 +315,12 @@ const getMetrics = () => {
     projectedAnnualSavingsINR,
     operationalEfficiencyScore,
     incidentReductionPercent: 74, // historical benchmark
-    automationSuccessRate
+    automationSuccessRate,
+    // ESG sustainability
+    carbonReducedKg,
+    equivalentTreesSaved,
+    environmentalImpactScore,
+    sustainabilityIndex
   };
 };
 

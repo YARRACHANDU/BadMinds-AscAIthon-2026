@@ -78,6 +78,11 @@ export interface OperationalMetrics {
   operationalEfficiencyScore: number;
   incidentReductionPercent: number;
   automationSuccessRate: number;
+  // ESG metrics
+  carbonReducedKg: number;
+  equivalentTreesSaved: number;
+  environmentalImpactScore: number;
+  sustainabilityIndex: number;
 }
 
 export interface ActionItem {
