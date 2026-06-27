@@ -6,22 +6,47 @@ export interface AgentOutput {
   recommendedAction: string;
 }
 
+export interface EnergyAgentOutput {
+  observation: string;
+  reasoning: string;
+  savingsEstimate: string;
+  decision: string;
+  recommendedAction: string;
+}
+
+export interface SafetyAgentOutput {
+  observation: string;
+  riskLevel: string;
+  reasoning: string;
+  decision: string;
+  action: string;
+}
+
+export interface FacilityAgentOutput {
+  observation: string;
+  facilityHealthScore: number;
+  recommendation: string;
+  priority: string;
+}
+
 export interface AgentsState {
   security: AgentOutput;
-  energy: AgentOutput;
-  safety: AgentOutput;
-  facility: AgentOutput;
+  energy: EnergyAgentOutput;
+  safety: SafetyAgentOutput;
+  facility: FacilityAgentOutput;
 }
 
 export interface DeviceStates {
   lights: boolean;
   fan: boolean;
   alarm: boolean;
+  doorLocked: boolean;
 }
 
 export interface RoomState {
   roomId: string;
   roomName: string;
+  facility: string;
   cameraId: string;
   peopleCount: number;
   detectedObjects: string[];
@@ -45,6 +70,14 @@ export interface OperationalMetrics {
   incidentsToday: number;
   actionsExecuted: number;
   estimatedEnergySaved: number;
+  // Business ROI metrics
+  energySavedTodayINR: number;
+  energySavedThisWeekINR: number;
+  energySavedThisMonthINR: number;
+  projectedAnnualSavingsINR: number;
+  operationalEfficiencyScore: number;
+  incidentReductionPercent: number;
+  automationSuccessRate: number;
 }
 
 export interface ActionItem {

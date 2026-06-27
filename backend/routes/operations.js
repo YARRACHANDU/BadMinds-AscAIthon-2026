@@ -1,5 +1,5 @@
 /**
- * SentinelAI 2.0 — Operations & Security Intelligence API Router
+ * SentinelAI X — Operations & Security Intelligence API Router
  */
 
 const express = require("express");
@@ -10,10 +10,11 @@ const actionEngine = require("../services/actionEngine.service");
 const incidentService = require("../services/incident.service");
 const predictiveService = require("../services/predictive.service");
 const eventTimeline = require("../services/eventTimeline.service");
+const copilotService = require("../services/copilot.service");
 
 /**
  * GET /api/metrics
- * Returns global operational metrics for the campus dashboard
+ * Returns global operational & ROI metrics for the campus dashboard
  */
 router.get("/metrics", (req, res) => {
   try {
@@ -101,7 +102,8 @@ router.get("/timeline", (req, res) => {
 router.post("/rooms/:roomId/device", async (req, res) => {
   try {
     const { device, state } = req.body;
-    if (typeof state !== "boolean" || !["lights", "fan", "alarm"].includes(device)) {
+    const allowedDevices = ["lights", "fan", "alarm", "doorLocked"];
+    if (typeof state !== "boolean" || !allowedDevices.includes(device)) {
       return res.status(400).json({ error: "Invalid device or state parameters." });
     }
 
@@ -110,7 +112,7 @@ router.post("/rooms/:roomId/device", async (req, res) => {
       return res.status(404).json({ error: `Room ${req.params.roomId} not found.` });
     }
 
-    // Log the manual override
+    // Log manual override
     eventTimeline.addEvent(
       req.params.roomId,
       "action",
@@ -118,6 +120,23 @@ router.post("/rooms/:roomId/device", async (req, res) => {
     );
 
     res.json({ success: true, room: updatedRoom });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/copilot/chat
+ * Generative AI Copilot assistant completions
+ */
+router.post("/copilot/chat", async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: "Message is required." });
+    }
+    const response = await copilotService.generateCopilotResponse(message);
+    res.json({ success: true, response });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

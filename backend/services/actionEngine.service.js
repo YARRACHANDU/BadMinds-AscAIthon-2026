@@ -1,5 +1,5 @@
 /**
- * SentinelAI 2.0 — Centralized Action Engine & ESP32 Integration Layer
+ * SentinelAI X — Centralized Action Engine & ESP32 Integration Layer
  * Responsibility: Handles actuation scheduling, execution states, and IoT interface abstractions.
  */
 
@@ -52,6 +52,12 @@ const ESP32Client = {
   },
   async deactivateAlarm() {
     return this.sendCommand("alarm_off");
+  },
+  async lockDoor() {
+    return this.sendCommand("lock_door");
+  },
+  async unlockDoor() {
+    return this.sendCommand("unlock_door");
   }
 };
 
@@ -115,6 +121,14 @@ const executeActionAsync = async (action) => {
       case "DEACTIVATE_ALARM":
         success = await ESP32Client.deactivateAlarm();
         await ESM.updateDeviceState(action.roomId, { alarm: false });
+        break;
+      case "LOCK_DOOR":
+        success = await ESP32Client.lockDoor();
+        await ESM.updateDeviceState(action.roomId, { doorLocked: true });
+        break;
+      case "UNLOCK_DOOR":
+        success = await ESP32Client.unlockDoor();
+        await ESM.updateDeviceState(action.roomId, { doorLocked: false });
         break;
       case "SEND_NOTIFICATION":
       case "CREATE_INCIDENT":
