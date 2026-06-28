@@ -24,6 +24,7 @@ export default function Home() {
 
   // Dashboard Modes
   const [activeView, setActiveView] = useState<string>("overview");
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [selectedBlock, setSelectedBlock] = useState<string>("Engineering Block");
   const [simulationMode, setSimulationMode] = useState<"webcam" | "demo">("webcam");
   const [sampleInterval, setSampleInterval] = useState<number>(3000);
@@ -883,6 +884,14 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-[#09090b] text-zinc-100 font-sans select-none overflow-hidden">
       
+      {/* Sidebar Backdrop for Mobile */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-40 md:hidden" 
+          onClick={() => setIsSidebarOpen(false)} 
+        />
+      )}
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-[9999] bg-[#0c0c0e] border border-zinc-900 text-zinc-350 px-4 py-3 rounded-lg shadow-2xl text-xs flex items-center gap-2">
@@ -892,16 +901,31 @@ export default function Home() {
       )}
 
       {/* Left Sidebar Navigation */}
-      <aside className="w-64 border-r border-zinc-900 bg-[#09090b] flex flex-col justify-between h-full font-sans">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-zinc-900 bg-[#09090b] flex flex-col justify-between h-full font-sans transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${
+        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+      }`}>
         <div className="flex flex-col gap-8 p-6">
           
           {/* Logo / System Status */}
-          <div className="flex flex-col gap-1">
-            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              <span>SentinelAI X</span>
-              <span className={`w-2 h-2 rounded-full ${isCrisisMode ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`} />
-            </h1>
-            <p className="text-[10px] text-zinc-555 tracking-wider uppercase font-semibold">Physical OS</p>
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                <span>SentinelAI X</span>
+                <span className={`w-2 h-2 rounded-full ${isCrisisMode ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`} />
+              </h1>
+              <p className="text-[10px] text-zinc-555 tracking-wider uppercase font-semibold">Physical OS</p>
+            </div>
+            
+            {/* Mobile Close Button */}
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="p-1 text-zinc-500 hover:text-white md:hidden focus:outline-none"
+              aria-label="Close menu"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           {/* Navigation Links */}
@@ -928,6 +952,7 @@ export default function Home() {
                   key={id}
                   onClick={() => {
                     setActiveView(id);
+                    setIsSidebarOpen(false);
                     if (id === "perception" && rooms.length > 0 && !selectedRoomId) setSelectedRoomId(rooms[0].roomId);
                     if (id === "report" && !dailyReport) {
                       fetch(`${backendUrl}/api/report/daily`).then(r => r.json()).then(d => { if (d.success) setDailyReport(d.report); });
@@ -1019,6 +1044,26 @@ export default function Home() {
       {/* Main Content Frame */}
       <main className="flex-1 flex flex-col bg-[#09090b] overflow-y-auto">
 
+        {/* Mobile Header */}
+        <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-4 bg-[#09090b]/80 backdrop-blur-md border-b border-zinc-900 md:hidden">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="p-1 text-zinc-400 hover:text-white focus:outline-none"
+              aria-label="Open menu"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <span className="text-sm font-bold text-white tracking-tight">SentinelAI X</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${isCrisisMode ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`} />
+          </div>
+          <div className="text-[10px] text-zinc-400 font-mono">
+            {systemClock || "--:--:--"}
+          </div>
+        </header>
+
         {/* Global Emergency Banner if Crisis is on */}
         {isCrisisMode && (
           <div className="bg-rose-500/5 border-b border-rose-500/10 px-8 py-4 flex items-center justify-between">
@@ -1030,7 +1075,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="p-8 max-w-[1400px] w-full mx-auto flex flex-col gap-8">
+        <div className="p-4 sm:p-6 md:p-8 max-w-[1400px] w-full mx-auto flex flex-col gap-8">
           
           {/* ==================== VIEW 1: OVERVIEW ==================== */}
           {activeView === "overview" && (
@@ -1774,59 +1819,61 @@ export default function Home() {
               </div>
 
               <div className="bg-[#09090b] border border-zinc-900 rounded-xl overflow-hidden text-xs">
-                <table className="w-full border-collapse font-sans text-left">
-                  <thead>
-                    <tr className="bg-zinc-950 border-b border-zinc-900 text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="p-4">Action</th>
-                      <th className="p-4">Reason</th>
-                      <th className="p-4">Result</th>
-                      <th className="p-4 text-right">Impact</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-900/60">
-                    {actions.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="p-8 text-center text-zinc-600">
-                          No operations logged yet.
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse font-sans text-left min-w-[600px] md:min-w-0">
+                    <thead>
+                      <tr className="bg-zinc-950 border-b border-zinc-900 text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
+                        <th className="p-4">Action</th>
+                        <th className="p-4">Reason</th>
+                        <th className="p-4">Result</th>
+                        <th className="p-4 text-right">Impact</th>
                       </tr>
-                    ) : (
-                      actions.map((act) => {
-                        const isLight = act.type.includes("LIGHT");
-                        const isDoor = act.type.includes("LOCK");
-                        const impactText = isLight ? "₹14 Saved" : isDoor ? "Security Restored" : "Optimized";
-                        
-                        let reasonText = act.details || "Grid optimization cycle";
-                        if (act.evidenceUsed) {
-                          reasonText = `${reasonText} (${act.evidenceUsed})`;
-                        }
+                    </thead>
+                    <tbody className="divide-y divide-zinc-900/60">
+                      {actions.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-8 text-center text-zinc-600">
+                            No operations logged yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        actions.map((act) => {
+                          const isLight = act.type.includes("LIGHT");
+                          const isDoor = act.type.includes("LOCK");
+                          const impactText = isLight ? "₹14 Saved" : isDoor ? "Security Restored" : "Optimized";
+                          
+                          let reasonText = act.details || "Grid optimization cycle";
+                          if (act.evidenceUsed) {
+                            reasonText = `${reasonText} (${act.evidenceUsed})`;
+                          }
 
-                        return (
-                          <tr key={act.id} className="hover:bg-zinc-900/10 text-zinc-300 transition-colors">
-                            <td className="p-4 font-semibold text-white">
-                              {act.type.replace(/_/g, " ")}
-                            </td>
-                            <td className="p-4 text-zinc-400">
-                              {reasonText}
-                            </td>
-                            <td className="p-4">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                act.status.toLowerCase() === "completed"
-                                  ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                                  : "bg-blue-500/10 text-blue-500 border border-blue-500/20 animate-pulse"
-                              }`}>
-                                {act.status.toUpperCase()}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right text-emerald-500 font-bold">
-                              {impactText}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                          return (
+                            <tr key={act.id} className="hover:bg-zinc-900/10 text-zinc-300 transition-colors">
+                              <td className="p-4 font-semibold text-white">
+                                {act.type.replace(/_/g, " ")}
+                              </td>
+                              <td className="p-4 text-zinc-400">
+                                {reasonText}
+                              </td>
+                              <td className="p-4">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  act.status.toLowerCase() === "completed"
+                                    ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                                    : "bg-blue-500/10 text-blue-500 border border-blue-500/20 animate-pulse"
+                                }`}>
+                                  {act.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="p-4 text-right text-emerald-500 font-bold">
+                                {impactText}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -2181,14 +2228,14 @@ export default function Home() {
           {/* ==================== VIEW: DAILY REPORT ==================== */}
           {activeView === "report" && (
             <div className="flex flex-col gap-8 font-sans max-w-4xl mx-auto">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold tracking-tight text-white">Daily Operational Report</h2>
                   <p className="text-zinc-500 text-xs mt-1">Structured PDF-ready summary of campus efficiency, ESG achievements, and ROI statistics.</p>
                 </div>
                 <button
                   onClick={() => window.print()}
-                  className="bg-zinc-900 border border-zinc-800 text-white hover:bg-zinc-800 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                  className="bg-zinc-900 border border-zinc-800 text-white hover:bg-zinc-800 px-4 py-2 rounded-lg text-xs font-semibold transition-all self-start sm:self-auto"
                 >
                   Print / Export PDF
                 </button>
@@ -2529,7 +2576,7 @@ export default function Home() {
 
           {/* ==================== VIEW 7: AI COPILOT ==================== */}
           {activeView === "copilot" && (
-            <div className="flex flex-col max-w-4xl mx-auto w-full h-[650px] justify-between font-sans gap-6">
+            <div className="flex flex-col max-w-4xl mx-auto w-full h-[calc(100vh-140px)] md:h-[650px] justify-between font-sans gap-6">
               
               <div>
                 <h2 className="text-xl font-bold tracking-tight text-white font-sans">AI Executive Copilot</h2>
