@@ -1,4 +1,4 @@
-# SentinelAI X  Team Name : BadMinds
+# SentinelAI X Team Name : BadMinds
 
 ### The Operating System for Physical Spaces
 
@@ -7,12 +7,6 @@
 SentinelAI X is an Autonomous Physical AI Operations Platform that transforms traditional physical infrastructure into intelligent, self-aware, and operationally optimized environments.
 
 Unlike conventional CCTV systems that merely record events, SentinelAI X continuously observes, understands, reasons, decides, and acts upon real-world situations using AI-powered perception and autonomous decision-making.
-
----
-
-# System Architecture Diagram
-
-![SentinelAI X Architecture](./sentinalAI%20X%20Architecture.png)
 
 ---
 
