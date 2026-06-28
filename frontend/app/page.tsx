@@ -33,6 +33,17 @@ export default function Home() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [systemClock, setSystemClock] = useState<string>("");
 
+  // Voice Operations states
+  const [voiceLanguage, setVoiceLanguage] = useState<"en" | "hi" | "te" | "ta">("en");
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [isContinuousVoiceMode, setIsContinuousVoiceMode] = useState<boolean>(false);
+  const [pendingAction, setPendingAction] = useState<{ type: string; details?: any } | null>(null);
+
+  const recognitionRef = useRef<any>(null);
+  const announcedIncidentsRef = useRef<Set<string>>(new Set());
+  const announcedWasteRoomsRef = useRef<Set<string>>(new Set());
+  const initialFetchRef = useRef<boolean>(true);
+
   // Crisis Mode Control (Manual or Auto-Triggered by CRITICAL incidents)
   const [manualCrisis, setManualCrisis] = useState<boolean>(false);
   const [audioAlarmActive, setAudioAlarmActive] = useState<boolean>(false);
@@ -881,6 +892,540 @@ export default function Home() {
     };
   };
 
+  const voiceTranslations = {
+    en: {
+      energyWaste: (room: string) => `Attention. ${room} is currently empty while electrical devices remain active. Potential energy waste detected.`,
+      unauthorizedAccess: (room: string) => `Warning. Unauthorized access detected in ${room}. Security team has been notified.`,
+      safetyIncident: (block: string) => `Critical Alert. Safety risk detected in ${block}. Immediate attention required.`,
+      actionLightsOff: (room: string) => `Lights in ${room} have been turned off successfully.`,
+      actionFanOff: (room: string) => `Fan in ${room} has been switched off successfully.`,
+      actionDoorLocked: (room: string) => `Door in ${room} has been locked successfully.`,
+      actionDoorUnlocked: (room: string) => `Door in ${room} has been unlocked successfully.`,
+      actionCompleted: "Action completed successfully.",
+      commandReceived: (actionText: string) => `Command received. ${actionText}.`,
+      confirmLockAll: "Please confirm. This action will lock all connected doors.",
+      executingAction: "Executing action.",
+      greeting: "Voice Operations activated. I am ready for your commands.",
+      copilotError: "Sorry, I could not process that command.",
+      noActiveIncidents: "All physical incidents have been resolved. Space operations are nominal.",
+    },
+    hi: {
+      energyWaste: (room: string) => `ध्यान दें। ${room} इस समय खाली है लेकिन उपकरण चालू हैं। ऊर्जा की बर्बादी का पता चला है।`,
+      unauthorizedAccess: (room: string) => `चेतावनी। ${room} में अनधिकृत प्रवेश का पता चला है। सुरक्षा टीम को सूचित कर दिया गया है।`,
+      safetyIncident: (block: string) => `गंभीर चेतावनी। ${block} में सुरक्षा जोखिम का पता चला है। तत्काल ध्यान देने की आवश्यकता है।`,
+      actionLightsOff: (room: string) => `${room} की लाइट सफलतापूर्वक बंद कर दी गई है।`,
+      actionFanOff: (room: string) => `${room} का पंखा सफलतापूर्वक बंद कर दिया गया है।`,
+      actionDoorLocked: (room: string) => `${room} का दरवाजा सफलतापूर्वक लॉक कर दिया गया है।`,
+      actionDoorUnlocked: (room: string) => `${room} का दरवाजा सफलतापूर्वक अनलॉक कर दिया गया है।`,
+      actionCompleted: "कार्य सफलतापूर्वक पूरा हुआ।",
+      commandReceived: (actionText: string) => `आदेश प्राप्त हुआ। ${actionText}.`,
+      confirmLockAll: "कृपया पुष्टि करें। यह क्रिया सभी जुड़े दरवाजों को लॉक कर देगी।",
+      executingAction: "कार्य निष्पादित किया जा रहा है।",
+      greeting: "वॉयस ऑपरेशंस सक्रिय। मैं आपके आदेशों के लिए तैयार हूं।",
+      copilotError: "क्षमा करें, मैं उस आदेश को संसाधित नहीं कर सका।",
+      noActiveIncidents: "सभी भौतिक घटनाएं सुलझा ली गई हैं। अंतरिक्ष संचालन सामान्य है।",
+    },
+    te: {
+      energyWaste: (room: string) => `శ్రద్ధ. పరికరాలు సక్రియంగా ఉన్నప్పటికీ ${room} ప్రస్తుతం ఖాళీగా ఉంది. విద్యుత్ వృధా గుర్తించబడింది.`,
+      unauthorizedAccess: (room: string) => `హెచ్చరిక. ${room} లో అనధికారిక ప్రవేశం గుర్తించబడింది. భద్రతా బృందానికి సమాచారం అందించబడింది.`,
+      safetyIncident: (block: string) => `తీవ్రమైన హెచ్చరిక. ${block} లో భద్రతా ప్రమాదం గుర్తించబడింది. వెంటనే శ్రద్ధ వహించండి.`,
+      actionLightsOff: (room: string) => `${room} లో లైట్లు విజయవంతంగా ఆపివేయబడ్డాయి.`,
+      actionFanOff: (room: string) => `${room} లో ఫ్యాన్ విజయవంతంగా ఆపివేయబడింది.`,
+      actionDoorLocked: (room: string) => `${room} తలుపు విజయవంతంగా లాక్ చేయబడింది.`,
+      actionDoorUnlocked: (room: string) => `${room} తలుపు విజయవంతంగా అన్‌లాక్ చేయబడింది.`,
+      actionCompleted: "పని విజయవంతంగా పూర్తయింది.",
+      commandReceived: (actionText: string) => `ఆదేశం అందింది. ${actionText}.`,
+      confirmLockAll: "దయచేసి ధృవీకరించండి. ఈ చర్య అన్ని కనెక్ట్ చేయబడిన తలుపులను లాక్ చేస్తుంది.",
+      executingAction: "చర్యను అమలు చేస్తున్నాము.",
+      greeting: "వాయిస్ ఆపరేషన్స్ ప్రారంభించబడ్డాయి. మీ ఆదేశాల కోసం సిద్ధంగా ఉన్నాను.",
+      copilotError: "క్షమించండి, ఆ ఆదేశాన్ని ప్రాసెస్ చేయలేకపోయాను.",
+      noActiveIncidents: "అన్ని భౌతిక సంఘటనలు పరిష్కరించబడ్డాయి. స్థల కార్యకలాపాలు సాధారణంగా ఉన్నాయి.",
+    },
+    ta: {
+      energyWaste: (room: string) => `கவனம். சாதனங்கள் இயங்கும் நிலையில் ${room} தற்போது காலியாக உள்ளது. மின் விரயம் கண்டறியப்பட்டுள்ளது.`,
+      unauthorizedAccess: (room: string) => `எச்சரிக்கை. ${room} இல் அங்கீகரிக்கப்படாத நுழைவு கண்டறியப்பட்டுள்ளது. பாதுகாப்பு குழுவிற்கு தகவல் தெரிவிக்கப்பட்டுள்ளது.`,
+      safetyIncident: (block: string) => `முக்கிய எச்சரிக்கை. ${block} இல் பாதுகாப்பு ஆபத்து கண்டறியப்பட்டுள்ளது. உடனடி கவனம் தேவை.`,
+      actionLightsOff: (room: string) => `${room} இல் விளக்குகள் வெற்றிகரமாக அணைக்கப்பட்டுள்ளன.`,
+      actionFanOff: (room: string) => `${room} இல் மின்விசிறி வெற்றிகரமாக அணைக்கப்பட்டுள்ளது.`,
+      actionDoorLocked: (room: string) => `${room} கதவு வெற்றிகரமாக பூட்டப்பட்டுள்ளது.`,
+      actionDoorUnlocked: (room: string) => `${room} கதவு வெற்றிகரமாக திறக்கப்பட்டுள்ளது.`,
+      actionCompleted: "செயல் வெற்றிகரமாக முடிந்தது.",
+      commandReceived: (actionText: string) => `கட்டளை பெறப்பட்டது. ${actionText}.`,
+      confirmLockAll: "தயவுசெய்து உறுதிப்படுத்தவும். இந்த செயல் இணைக்கப்பட்ட அனைத்து கதவுகளையும் பூட்டிவிடும்.",
+      executingAction: "செயல்பாட்டை மேற்கொள்கிறது.",
+      greeting: "குரல் செயல்பாடுகள் செயல்படுத்தப்பட்டன. உங்கள் கட்டளைகளுக்கு நான் தயார்.",
+      copilotError: "மன்னிக்கவும், அந்த கட்டளையை செயல்படுத்த முடியவில்லை.",
+      noActiveIncidents: "அனைத்து உடல்ரீதியான சம்பவங்களும் தீர்க்கப்பட்டுள்ளன. செயல்பாடுகள் சாதாரணமாக உள்ளன.",
+    }
+  };
+
+  const speak = (text: string, callback?: () => void) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      if (callback) callback();
+      return;
+    }
+
+    // Cancel active speech to avoid queue buildup
+    window.speechSynthesis.cancel();
+
+    let langTag = "en-US";
+    if (voiceLanguage === "hi") langTag = "hi-IN";
+    else if (voiceLanguage === "te") langTag = "te-IN";
+    else if (voiceLanguage === "ta") langTag = "ta-IN";
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = langTag;
+
+    const voices = window.speechSynthesis.getVoices();
+    const matchingVoice = voices.find(v => v.lang.startsWith(langTag));
+    if (matchingVoice) {
+      utterance.voice = matchingVoice;
+    }
+
+    utterance.onend = () => {
+      if (callback) callback();
+    };
+
+    utterance.onerror = (e) => {
+      console.warn("Speech synthesis error", e);
+      if (callback) callback();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startSpeechRecognition = (isContinuous: boolean) => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setToastMessage("Speech recognition is not supported in this browser.");
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+    }
+
+    const rec = new SpeechRecognition();
+    rec.continuous = false;
+    rec.interimResults = false;
+
+    if (voiceLanguage === "hi") rec.lang = "hi-IN";
+    else if (voiceLanguage === "te") rec.lang = "te-IN";
+    else if (voiceLanguage === "ta") rec.lang = "ta-IN";
+    else rec.lang = "en-IN";
+
+    rec.onstart = () => {
+      if (isContinuous) {
+        setIsContinuousVoiceMode(true);
+      } else {
+        setIsListening(true);
+      }
+    };
+
+    rec.onresult = async (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      console.log("Speech Result:", transcript);
+      await processVoiceCommand(transcript, isContinuous);
+    };
+
+    rec.onerror = (event: any) => {
+      console.warn("Speech recognition error", event.error);
+      if (isContinuous) {
+        // Restart on pause or no-speech
+        setTimeout(() => {
+          if (isContinuousVoiceMode) {
+            startSpeechRecognition(true);
+          }
+        }, 1000);
+      } else {
+        setIsListening(false);
+      }
+    };
+
+    rec.onend = () => {
+      if (!isContinuous) {
+        setIsListening(false);
+      }
+    };
+
+    recognitionRef.current = rec;
+    rec.start();
+  };
+
+  const processVoiceCommand = async (transcript: string, isContinuous: boolean) => {
+    const query = transcript.toLowerCase().trim();
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+    }
+
+    const speakAndResume = (responseText: string) => {
+      speak(responseText, () => {
+        if (isContinuous && isContinuousVoiceMode) {
+          startSpeechRecognition(true);
+        }
+      });
+    };
+
+    // 1. Check Pending Action Confirmation
+    if (pendingAction) {
+      const isConfirm = query.includes("confirm") || query.includes("yes") || query.includes("haa") || 
+                        query.includes("avunu") || query.includes("aama") || query.includes("ok");
+      const isCancel = query.includes("cancel") || query.includes("no") || query.includes("vadd") || 
+                       query.includes("illai");
+
+      if (isConfirm) {
+        if (pendingAction.type === "LOCK_ALL") {
+          try {
+            const unlockedRooms = rooms.filter(r => !r.deviceStates.doorLocked);
+            for (const r of unlockedRooms) {
+              await fetch(`${backendUrl}/api/rooms/${r.roomId}/device`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ device: "doorLocked", state: true })
+              });
+            }
+            refreshState();
+            setPendingAction(null);
+            speakAndResume("Action executed. All connected doors have been locked successfully.");
+          } catch (e) {
+            setPendingAction(null);
+            speakAndResume("Error executing command.");
+          }
+        } else if (pendingAction.type === "SHUTDOWN_ALL") {
+          try {
+            for (const r of rooms) {
+              if (r.deviceStates.lights) {
+                await fetch(`${backendUrl}/api/rooms/${r.roomId}/device`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ device: "lights", state: false })
+                });
+              }
+              if (r.deviceStates.fan) {
+                await fetch(`${backendUrl}/api/rooms/${r.roomId}/device`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ device: "fan", state: false })
+                });
+              }
+            }
+            refreshState();
+            setPendingAction(null);
+            speakAndResume("Action executed. All lighting and HVAC systems have been powered down.");
+          } catch (e) {
+            setPendingAction(null);
+            speakAndResume("Error executing command.");
+          }
+        }
+        return;
+      } else if (isCancel) {
+        setPendingAction(null);
+        speakAndResume("Action cancelled.");
+        return;
+      } else {
+        speakAndResume("Please confirm the action by saying confirm or yes, or cancel by saying cancel.");
+        return;
+      }
+    }
+
+    // 2. Sensitive Action Triggers (Confirmation Needed)
+    if (query.includes("lock all doors") || query.includes("lock all rooms")) {
+      const unlockedCount = rooms.filter(r => !r.deviceStates.doorLocked).length;
+      if (unlockedCount === 0) {
+        speakAndResume("All doors are already locked.");
+        return;
+      }
+      setPendingAction({ type: "LOCK_ALL" });
+      const confirmText = voiceLanguage === "hi" ? `कृपया पुष्टि करें। यह क्रिया ${unlockedCount} जुड़े दरवाजों को लॉक कर देगी।`
+                        : voiceLanguage === "te" ? `దయచేసి ధృవీకరించండి. ఈ చర్య ${unlockedCount} తలుపులను లాక్ చేస్తుంది.`
+                        : voiceLanguage === "ta" ? `தயவுசெய்து உறுதிப்படுத்தவும். இந்த செயல் ${unlockedCount} கதவுகளை பூட்டிவிடும்.`
+                        : `Please confirm. This action will lock ${unlockedCount} connected doors.`;
+      speakAndResume(confirmText);
+      return;
+    }
+
+    if (query.includes("turn off all lights") || query.includes("shutdown all devices")) {
+      setPendingAction({ type: "SHUTDOWN_ALL" });
+      const confirmText = voiceLanguage === "hi" ? "कृपया पुष्टि करें। यह क्रिया सभी लाइट और उपकरणों को बंद कर देगी।"
+                        : voiceLanguage === "te" ? "దయచేసి ధృవీకరించండి. ఈ చర్య అన్ని లైట్లు మరియు ఫ్యాన్‌లను ఆపివేస్తుంది."
+                        : voiceLanguage === "ta" ? "தயவுசெய்து உறுதிப்படுத்தவும். இந்த செயல் அனைத்து விளக்குகள் மற்றும் மின்விசிறிகளை அணைக்கும்."
+                        : "Please confirm. This action will power off all lighting and fans.";
+      speakAndResume(confirmText);
+      return;
+    }
+
+    // 3. Direct Device Controls (turn off lights, lock door, etc.)
+    const matchesTurnOffLights = query.includes("turn off light") || query.includes("lights off") || query.includes("switch off light");
+    const matchesTurnOnLights = query.includes("turn on light") || query.includes("lights on") || query.includes("switch on light");
+    const matchesTurnOffFan = query.includes("turn off fan") || query.includes("fan off") || query.includes("switch off fan");
+    const matchesTurnOnFan = query.includes("turn on fan") || query.includes("fan on") || query.includes("switch on fan");
+    const matchesLockDoor = query.includes("lock door") || query.includes("lock room") || query.includes("close room");
+    const matchesUnlockDoor = query.includes("unlock door") || query.includes("unlock room") || query.includes("open room");
+
+    if (matchesTurnOffLights || matchesTurnOnLights || matchesTurnOffFan || matchesTurnOnFan || matchesLockDoor || matchesUnlockDoor) {
+      const targetRoom = rooms.find(r => {
+        const name = r.roomName.toLowerCase();
+        return query.includes(name) || name.split(' ').some(word => word.length > 3 && query.includes(word));
+      });
+
+      if (targetRoom) {
+        let device: keyof DeviceStates | null = null;
+        let targetState = false;
+        let actionWord = "";
+
+        if (matchesTurnOffLights) { device = "lights"; targetState = false; actionWord = "turning off lights"; }
+        else if (matchesTurnOnLights) { device = "lights"; targetState = true; actionWord = "turning on lights"; }
+        else if (matchesTurnOffFan) { device = "fan"; targetState = false; actionWord = "turning off fan"; }
+        else if (matchesTurnOnFan) { device = "fan"; targetState = true; actionWord = "turning on fan"; }
+        else if (matchesLockDoor) { device = "doorLocked"; targetState = true; actionWord = "locking door"; }
+        else if (matchesUnlockDoor) { device = "doorLocked"; targetState = false; actionWord = "unlocking door"; }
+
+        if (device) {
+          const currentState = targetRoom.deviceStates[device];
+          if (currentState === targetState) {
+            const alreadyText = `The ${device === "doorLocked" ? "door" : device} in ${targetRoom.roomName} is already ${targetState ? (device === "doorLocked" ? "locked" : "on") : (device === "doorLocked" ? "unlocked" : "off")}.`;
+            speakAndResume(alreadyText);
+            return;
+          }
+
+          const ackText = `Command received. ${actionWord} in ${targetRoom.roomName}.`;
+          speak(ackText, async () => {
+            try {
+              const response = await fetch(`${backendUrl}/api/rooms/${targetRoom.roomId}/device`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ device, state: targetState })
+              });
+              if (response.ok) {
+                refreshState();
+                speakAndResume("Action completed successfully.");
+              } else {
+                speakAndResume("Action transmission failed.");
+              }
+            } catch (err) {
+              speakAndResume("Failed to communicate with device actuator.");
+            }
+          });
+          return;
+        }
+      } else {
+        speakAndResume("I found the command, but could not identify the target room name in your request.");
+        return;
+      }
+    }
+
+    // 4. View Navigation Commands
+    if (query.includes("show incident") || query.includes("go to incident") || query.includes("open incident")) {
+      setActiveView("incidents");
+      speakAndResume("Displaying active incident logs.");
+      return;
+    }
+    if (query.includes("show heatmap") || query.includes("go to heatmap") || query.includes("open heatmap")) {
+      setActiveView("heatmap");
+      speakAndResume("Displaying campus energy and safety heatmap.");
+      return;
+    }
+    if (query.includes("show daily report") || query.includes("generate daily report") || query.includes("show report") || query.includes("go to report")) {
+      setActiveView("report");
+      if (!dailyReport) {
+        const r = await fetch(`${backendUrl}/api/report/daily`);
+        const d = await r.json();
+        if (d.success) setDailyReport(d.report);
+      }
+      speakAndResume("Generated today's operational report. Ready for export.");
+      return;
+    }
+    if (query.includes("show overview") || query.includes("go to overview") || query.includes("open overview")) {
+      setActiveView("overview");
+      speakAndResume("Showing campus overview dashboard.");
+      return;
+    }
+    if (query.includes("show compliance") || query.includes("go to compliance") || query.includes("open compliance")) {
+      setActiveView("compliance");
+      speakAndResume("Displaying regulatory safety and energy compliance scorecard.");
+      return;
+    }
+    if (query.includes("show settings") || query.includes("go to settings") || query.includes("open settings")) {
+      setActiveView("settings");
+      speakAndResume("Opening physical system configurations.");
+      return;
+    }
+
+    // 5. Operational Information Queries
+    if (query.includes("energy was saved today") || query.includes("saved today") || query.includes("energy saved")) {
+      const saved = metrics.energySavedTodayINR || 240;
+      const text = voiceLanguage === "hi" ? `आज लगभग ${saved} रुपये की ऊर्जा बचत हुई है।`
+                 : voiceLanguage === "te" ? `ఈరోజు అంచనా ప్రకారం ${saved} రూపాయల విద్యుత్ ఆదా చేయబడింది.`
+                 : voiceLanguage === "ta" ? `இன்று சுமார் ${saved} ரூபாய் மின் சேமிப்பு செய்யப்பட்டுள்ளது.`
+                 : `Energy savings today are estimated at ${saved} rupees.`;
+      speakAndResume(text);
+      return;
+    }
+
+    if (query.includes("rooms are occupied") || query.includes("which rooms are occupied") || query.includes("occupied rooms")) {
+      const occupied = rooms.filter(r => r.occupancyStatus === "Occupied");
+      if (occupied.length === 0) {
+        speakAndResume("No rooms are currently occupied.");
+      } else {
+        const names = occupied.map(r => r.roomName).join(", ");
+        speakAndResume(`The following rooms are currently occupied: ${names}.`);
+      }
+      return;
+    }
+
+    if (query.includes("daily ai briefing") || query.includes("ai briefing") || query.includes("briefing")) {
+      playExecutiveBriefing();
+      return;
+    }
+
+    // 6. Fallback to Copilot
+    try {
+      const response = await fetch(`${backendUrl}/api/copilot/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: transcript })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        speakAndResume(data.response);
+      } else {
+        speakAndResume("Sorry, I am having trouble connecting to the AI brain.");
+      }
+    } catch (err) {
+      speakAndResume("Connection to the server failed. Please check network status.");
+    }
+  };
+
+  const playExecutiveBriefing = () => {
+    const health = healthScores?.campus?.score || 94;
+    const monitoredCount = rooms.length || 12;
+    const activeIncs = incidents.filter(i => i.status === "active").length;
+    const energySaved = metrics.energySavedTodayINR || 240;
+
+    let briefingText = "";
+    if (voiceLanguage === "hi") {
+      briefingText = `नमस्ते। आज हमारे पास ${monitoredCount} निगरानी की जाने वाली सुविधाएं हैं। ` +
+                     `वर्तमान में ${activeIncs} सक्रिय घटनाएं हैं जिन पर ध्यान देने की आवश्यकता है। ` +
+                     `आज अनुमानित ऊर्जा बचत ${energySaved} रुपये है। ` +
+                     `कैंपस का स्वास्थ्य स्कोर ${health} प्रतिशत है। सुरक्षा स्थिति स्थिर है।`;
+    } else if (voiceLanguage === "te") {
+      briefingText = `నమస్కారం. ఈరోజు మనకు ${monitoredCount} పర్యవేక్షణ సౌకర్యాలు ఉన్నాయి. ` +
+                     `ప్రస్తుతం ${activeIncs} క్రియాశీల సంఘటనలు శ్రద్ధ వహించాల్సి ఉంది. ` +
+                     `ఈరోజు అంచనా వేసిన విద్యుత్ ఆదా ${energySaved} రూపాయలు. ` +
+                     `క్యాంపస్ ఆరోగ్య స్కోరు ${health} శాతం. భద్రతా వ్యవస్థ సురక్షితంగా ఉంది.`;
+    } else if (voiceLanguage === "ta") {
+      briefingText = `வணக்கம். இன்று கண்காணிப்பில் ${monitoredCount} வசதிகள் உள்ளன. ` +
+                     `${activeIncs} செயலில் உள்ள சம்பவங்கள் உங்கள் கவனத்திற்கு தேவைப்படுகின்றன. ` +
+                     `இன்றைய மதிப்பிடப்பட்ட மின் சேமிப்பு ${energySaved} ரூபாய். ` +
+                     `வளாகத்தின் சுகாதார மதிப்பீடு ${health} சதவீதம். பாதுகாப்பு நிலை சீராக உள்ளது.`;
+    } else {
+      briefingText = `Good morning. Today there are ${monitoredCount} monitored facilities. ` +
+                     `${activeIncs > 0 ? `${activeIncs} active incidents require your attention.` : "No active incidents require attention."} ` +
+                     `Energy savings today are estimated at ${energySaved} rupees. ` +
+                     `Campus health score is ${health} percent. No critical security risks detected.`;
+    }
+
+    speak(briefingText, () => {
+      if (isContinuousVoiceMode) {
+        startSpeechRecognition(true);
+      }
+    });
+  };
+
+  // Real-time voice announcements hooks
+  useEffect(() => {
+    if (incidents.length === 0) return;
+    
+    if (initialFetchRef.current) {
+      incidents.forEach(i => announcedIncidentsRef.current.add(i.id));
+      initialFetchRef.current = false;
+      return;
+    }
+
+    incidents.forEach(ticket => {
+      if (ticket.status === "active" && !announcedIncidentsRef.current.has(ticket.id)) {
+        announcedIncidentsRef.current.add(ticket.id);
+        
+        const matchRoom = rooms.find(r => r.roomId === ticket.roomId);
+        const roomName = matchRoom ? matchRoom.roomName : "Campus Facility";
+
+        if (ticket.severity === "CRITICAL") {
+          let alertText = "";
+          if (voiceLanguage === "hi") {
+            alertText = `गंभीर चेतावनी। ${roomName} में सुरक्षा जोखिम का पता चला है। तत्काल ध्यान देने की आवश्यकता है।`;
+          } else if (voiceLanguage === "te") {
+            alertText = `తీవ్రమైన హెచ్చరిక. ${roomName} లో భద్రతా ప్రమాదం గుర్తించబడింది. వెంటనే శ్రద్ధ వహించండి.`;
+          } else if (voiceLanguage === "ta") {
+            alertText = `முக்கிய எச்சரிக்கை. ${roomName} இல் பாதுகாப்பு ஆபத்து கண்டறியப்பட்டுள்ளது. உடனடி கவனம் தேவை.`;
+          } else {
+            alertText = `Critical Alert. ${ticket.title} detected in ${roomName}. Immediate attention required.`;
+          }
+          speak(alertText);
+          
+          setManualCrisis(true);
+          setAudioAlarmActive(true);
+        } else if (ticket.severity === "HIGH") {
+          let alertText = "";
+          if (voiceLanguage === "hi") {
+            alertText = `चेतावनी। ${roomName} में अनधिकृत गतिविधि देखी गई है।`;
+          } else if (voiceLanguage === "te") {
+            alertText = `హెచ్చరిక. ${roomName} లో అసాధారణ కార్యాచరణ కనుగొనబడింది.`;
+          } else if (voiceLanguage === "ta") {
+            alertText = `எச்சரிக்கை. ${roomName} இல் அசாதாரண செயல்பாடு கண்டறியப்பட்டுள்ளது.`;
+          } else {
+            alertText = `Warning. ${ticket.title} detected in ${roomName}.`;
+          }
+          speak(alertText);
+        }
+      }
+    });
+  }, [incidents, rooms, voiceLanguage]);
+
+  useEffect(() => {
+    rooms.forEach(r => {
+      const isWasting = r.agents?.energy?.decision === "ENERGY_WASTAGE_DETECTED";
+      if (isWasting) {
+        if (!announcedWasteRoomsRef.current.has(r.roomId)) {
+          announcedWasteRoomsRef.current.add(r.roomId);
+          
+          let wasteText = "";
+          if (voiceLanguage === "hi") {
+            wasteText = `ध्यान दें। ${r.roomName} वर्तमान में खाली है लेकिन बिजली के उपकरण सक्रिय हैं। ऊर्जा की बर्बादी का पता चला है।`;
+          } else if (voiceLanguage === "te") {
+            wasteText = `శ్రద్ధ. విద్యుత్ పరికరాలు సక్రియంగా ఉన్నప్పటికీ ${r.roomName} ప్రస్తుతం ఖాళీగా ఉంది. విద్యుత్ వృధా కనుగొనబడింది.`;
+          } else if (voiceLanguage === "ta") {
+            wasteText = `கவணம். சாதனங்கள் இயங்கும் நிலையில் ${r.roomName} தற்போது காலியாக உள்ளது. மின் விரயம் கண்டறியப்பட்டுள்ளது.`;
+          } else {
+            wasteText = `Attention. ${r.roomName} is currently empty while electrical devices remain active. Potential energy waste detected.`;
+          }
+          speak(wasteText);
+        }
+      } else {
+        announcedWasteRoomsRef.current.delete(r.roomId);
+      }
+    });
+  }, [rooms, voiceLanguage]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+    };
+  }, []);
+
   return (
     <div className="flex h-screen bg-[#09090b] text-zinc-100 font-sans select-none overflow-hidden">
       
@@ -897,6 +1442,40 @@ export default function Home() {
         <div className="fixed top-6 right-6 z-[9999] bg-[#0c0c0e] border border-zinc-900 text-zinc-350 px-4 py-3 rounded-lg shadow-2xl text-xs flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
           {toastMessage}
+        </div>
+      )}
+
+      {/* Voice Status HUD */}
+      {(isListening || isContinuousVoiceMode) && (
+        <div className="fixed bottom-6 right-6 z-[9998] bg-[#0c0c0e] border border-zinc-800 px-4 py-3 rounded-2xl shadow-2xl shadow-black/50 flex items-center gap-3">
+          <div className={`flex items-center gap-2 ${isListening ? "text-rose-400" : "text-blue-400"}`}>
+            <div className="relative flex items-center justify-center w-3 h-3">
+              <div className={`w-3 h-3 rounded-full ${isListening ? "bg-rose-500" : "bg-blue-500"} animate-ping absolute opacity-75`} />
+              <div className={`w-2 h-2 rounded-full ${isListening ? "bg-rose-500" : "bg-blue-500"} relative`} />
+            </div>
+            <span className="text-xs font-bold tracking-wide">
+              {isListening ? "LISTENING" : "JARVIS ACTIVE"}
+            </span>
+          </div>
+          {pendingAction && (
+            <span className="text-[10px] text-amber-400 font-bold border-l border-zinc-700 pl-3 tracking-wider">
+              CONFIRM?
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setIsListening(false);
+              setIsContinuousVoiceMode(false);
+              setPendingAction(null);
+              if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch(e){} }
+              window.speechSynthesis?.cancel();
+            }}
+            className="ml-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -1032,6 +1611,91 @@ export default function Home() {
             )}
           </div>
 
+          {/* AI Voice Operations Widget */}
+          <div className="flex flex-col gap-3">
+            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider flex items-center justify-between">
+              <span>AI Voice Assistant</span>
+              {isContinuousVoiceMode && (
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              )}
+            </span>
+
+            {/* Mic + Continuous Mode row */}
+            <div className="flex gap-2 items-center">
+              <button
+                id="btn-tap-to-speak"
+                onClick={() => {
+                  if (isListening) {
+                    if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch(e){} }
+                    setIsListening(false);
+                  } else {
+                    startSpeechRecognition(false);
+                  }
+                }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold transition-all border ${
+                  isListening
+                    ? "bg-rose-500/10 text-rose-500 border-rose-500/30 shadow-lg shadow-rose-500/5"
+                    : "bg-zinc-900/40 hover:bg-zinc-900 border-zinc-800 text-zinc-300 hover:text-white"
+                }`}
+              >
+                <svg className={`w-3.5 h-3.5 ${isListening ? "animate-pulse" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+                <span>{isListening ? "Listening..." : "Tap to Speak"}</span>
+              </button>
+
+              <button
+                id="btn-jarvis-mode"
+                onClick={() => {
+                  if (isContinuousVoiceMode) {
+                    setIsContinuousVoiceMode(false);
+                    if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch(e){} }
+                    window.speechSynthesis?.cancel();
+                  } else {
+                    speak(voiceTranslations[voiceLanguage].greeting, () => startSpeechRecognition(true));
+                  }
+                }}
+                title={isContinuousVoiceMode ? "Stop Jarvis Mode" : "Start Jarvis Continuous Mode"}
+                className={`px-3 py-2 rounded-lg transition-all border flex items-center justify-center ${
+                  isContinuousVoiceMode
+                    ? "bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-lg shadow-blue-500/5"
+                    : "bg-zinc-900/40 hover:bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white"
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Language + Briefing row */}
+            <div className="flex gap-2">
+              <select
+                id="voice-language-selector"
+                value={voiceLanguage}
+                onChange={(e) => setVoiceLanguage(e.target.value as any)}
+                className="flex-1 bg-zinc-900/40 border border-zinc-800 text-[10px] text-zinc-350 font-bold px-2 py-1.5 rounded-lg focus:outline-none cursor-pointer hover:border-zinc-700 transition-colors"
+              >
+                <option value="en">English (IN)</option>
+                <option value="hi">हिन्दी (Hindi)</option>
+                <option value="te">తెలుగు (Telugu)</option>
+                <option value="ta">தமிழ் (Tamil)</option>
+              </select>
+
+              <button
+                id="btn-daily-briefing"
+                onClick={playExecutiveBriefing}
+                title="Daily AI Briefing"
+                className="px-3 py-1.5 rounded-lg bg-zinc-900/40 hover:bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold flex items-center gap-1.5 transition-all"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-5.536-9.536a5 5 0 000 7.072" />
+                </svg>
+                Briefing
+              </button>
+            </div>
+          </div>
+
           {/* System Telemetry Metadata */}
           <div className="pt-3 border-t border-zinc-900 flex items-center justify-between text-[10px] text-zinc-500">
             <span className="font-semibold">CLOCK</span>
@@ -1080,11 +1744,46 @@ export default function Home() {
           {/* ==================== VIEW 1: OVERVIEW ==================== */}
           {activeView === "overview" && (
             <div className="flex flex-col gap-8 font-sans">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <h2 className="text-xl font-bold tracking-tight text-white font-sans">Overview</h2>
                 <p className="text-zinc-500 text-xs mt-1">Real-time situational flow of physical operations.</p>
               </div>
-
+              {/* Voice Quick Controls */}
+              <div className="flex items-center gap-2">
+                <button
+                  id="btn-overview-voice-speak"
+                  onClick={() => {
+                    if (isListening) {
+                      if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch(e){} }
+                      setIsListening(false);
+                    } else {
+                      startSpeechRecognition(false);
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                    isListening
+                      ? "bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-lg shadow-rose-500/10"
+                      : "bg-zinc-900/60 hover:bg-zinc-900 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white"
+                  }`}
+                >
+                  <svg className={`w-4 h-4 ${isListening ? "animate-pulse" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                  {isListening ? "Listening..." : "Voice Command"}
+                </button>
+                <button
+                  id="btn-overview-briefing"
+                  onClick={playExecutiveBriefing}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border bg-zinc-900/60 hover:bg-zinc-900 border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-5.536-9.536a5 5 0 000 7.072" />
+                  </svg>
+                  AI Briefing
+                </button>
+              </div>
+            </div>
               {/* High-Impact 5-Step Story Flow Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {/* 1. OBSERVE */}
