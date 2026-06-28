@@ -1,4 +1,4 @@
-# SentinelAI X
+# SentinelAI X  Team Name : BadMinds
 
 ### The Operating System for Physical Spaces
 
@@ -7,6 +7,39 @@
 SentinelAI X is an Autonomous Physical AI Operations Platform that transforms traditional physical infrastructure into intelligent, self-aware, and operationally optimized environments.
 
 Unlike conventional CCTV systems that merely record events, SentinelAI X continuously observes, understands, reasons, decides, and acts upon real-world situations using AI-powered perception and autonomous decision-making.
+
+---
+
+# System Architecture Diagram
+
+![SentinelAI X Architecture](./sentinalAI%20X%20Architecture.png)
+
+---
+
+# Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="./frontend/public/1.png" alt="Screenshot 1" width="100%"/></td>
+    <td align="center"><img src="./frontend/public/2.png" alt="Screenshot 2" width="100%"/></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./frontend/public/3.png" alt="Screenshot 3" width="100%"/></td>
+    <td align="center"><img src="./frontend/public/4.png" alt="Screenshot 4" width="100%"/></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./frontend/public/5.png" alt="Screenshot 5" width="100%"/></td>
+    <td align="center"><img src="./frontend/public/6.png" alt="Screenshot 6" width="100%"/></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./frontend/public/7.png" alt="Screenshot 7" width="100%"/></td>
+    <td align="center"><img src="./frontend/public/8.png" alt="Screenshot 8" width="100%"/></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./frontend/public/9.png" alt="Screenshot 9" width="100%"/></td>
+    <td align="center"><img src="./frontend/public/10.png" alt="Screenshot 10" width="100%"/></td>
+  </tr>
+</table>
 
 ---
 
